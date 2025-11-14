@@ -21,7 +21,7 @@ public class KineticLightController : MonoBehaviour
 
     void Awake()
     {
-        if (!art) art = FindObjectOfType<ArtNetSender>();
+        if (!art) art = FindFirstObjectByType<ArtNetSender>();
         if (!art)
         {
             Debug.LogError("ArtNetSender が見つかりません。先に ArtNetSender.cs をシーンへ。");
