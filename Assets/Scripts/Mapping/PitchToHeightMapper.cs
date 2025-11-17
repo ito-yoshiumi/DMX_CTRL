@@ -16,26 +16,52 @@ namespace Encounter.Mapping
         [Tooltip("下限（100 = 一番下、床）")]
         public int dmxMax = 100;
 
-        [Tooltip("高さスムージング秒（小さいほど反応が速い、0で即座に反映）")]
-        public float smoothing = 0.1f; // 実際のホイストの動きに合わせて調整
-
-        [Tooltip("速度リミット（DMX値/秒、0で無制限）。実際のホイストの動きに合わせて調整")]
-        public float maxVelocity = 200f; // 実際のホイストの動きに合わせて設定
-
-        [Tooltip("加速度リミット（DMX値/秒²、0で無制限）。ホイストの物理的な加速性能に合わせて調整")]
-        public float maxAcceleration = 800f; // 実際のホイストの動きに合わせて設定
+        [Tooltip("移動速度（DMX値/秒、Unity画面のシミュレーション用。DMX機器には影響しません）")]
+        public float speed = 50f; // 等速運動の速度（Unity画面のシミュレーション用）
 
         [Header("Debug")]
         [Tooltip("デバッグログを表示するかどうか")]
         public bool enableDebugLog = true;
 
-        private float _currentDmx = 0f; // 初期値を上段に設定（DMX 0 = 約3メートル）。Start()またはReset()で正しく設定される
-        private float _currentVelocity = 0f;
+        private float _currentDmx = 0f; // シミュレーション用の現在位置（Unity画面表示用）
         private float _lastTargetDmx = float.NaN; // 最後の目標DMX値（NaN = まだ音が検出されていない）
+        private float _lastPitchHz = 0f; // 最後に処理したピッチ値
         private float _startTime = 0f; // 開始時刻（デバッグ用）
         private System.Collections.Generic.List<float> _pitchHistory = new System.Collections.Generic.List<float>(); // 最初の数秒間のピッチ履歴
 
+        /// <summary>
+        /// ピッチから最新の目標DMX値を取得（ディレイなし、DMX機器送信用）
+        /// </summary>
+        public int GetTargetDmxValue(float pitchHz)
+        {
+            UpdateTargetDmx(pitchHz);
+            
+            // 最新の目標値をそのまま返す（ディレイなし）
+            if (float.IsNaN(_lastTargetDmx))
+            {
+                return Mathf.RoundToInt(_currentDmx);
+            }
+            return Mathf.RoundToInt(_lastTargetDmx);
+        }
+
+        /// <summary>
+        /// ピッチからDMX値を取得（等速運動で移動した現在の値、Unity画面表示用）
+        /// </summary>
         public int MapPitchHzToDmx(float pitchHz)
+        {
+            // 目標値を更新
+            UpdateTargetDmx(pitchHz);
+            
+            // 等速運動で目標位置に向かって移動（Unity画面のシミュレーション用）
+            UpdateSimulation();
+            
+            return Mathf.RoundToInt(_currentDmx);
+        }
+
+        /// <summary>
+        /// ピッチから目標DMX値を計算して更新
+        /// </summary>
+        private void UpdateTargetDmx(float pitchHz)
         {
             // 開始時刻を記録（最初の呼び出し時のみ）
             if (_startTime == 0f)
@@ -43,7 +69,7 @@ namespace Encounter.Mapping
                 _startTime = Time.time;
             }
 
-            float targetDmx;
+            _lastPitchHz = pitchHz;
             float elapsedTime = Time.time - _startTime;
 
             if (pitchHz <= 0f)
@@ -54,26 +80,17 @@ namespace Encounter.Mapping
                     _pitchHistory.Add(pitchHz);
                 }
 
-                // 無効なピッチ値の場合は、最後の目標値が設定されている場合のみその値に向かって移動
-                // まだ音が検出されていない場合は、現在位置を維持（移動しない）
+                // 無効なピッチ値の場合は、最後の目標値を維持（新しい目標値は設定しない）
                 if (float.IsNaN(_lastTargetDmx))
                 {
-                    // まだ音が検出されていない場合は、現在位置を維持
-                    if (enableDebugLog && elapsedTime < 5f && Time.frameCount % 30 == 0) // 最初の5秒間は頻繁にログ出力
+                    // まだ音が検出されていない場合は、目標値を更新しない
+                    if (enableDebugLog && elapsedTime < 5f && Time.frameCount % 30 == 0)
                     {
-                        Debug.Log($"[PitchToHeightMapper] 無音 (経過時間: {elapsedTime:F2}秒) - 現在位置を維持: DMX {_currentDmx:F1}");
+                        Debug.Log($"[PitchToHeightMapper] 無音 (経過時間: {elapsedTime:F2}秒) - 目標値未設定");
                     }
-                    return Mathf.RoundToInt(_currentDmx);
+                    return;
                 }
-                else
-                {
-                    // 最後の目標値に向かって移動し続ける
-                    targetDmx = _lastTargetDmx;
-                    if (enableDebugLog && elapsedTime < 5f && Time.frameCount % 30 == 0) // 最初の5秒間は頻繁にログ出力
-                    {
-                        Debug.Log($"[PitchToHeightMapper] 無音 (経過時間: {elapsedTime:F2}秒) - 最後の目標値({_lastTargetDmx:F1})に向かって移動中, 現在: {_currentDmx:F1}");
-                    }
-                }
+                // 最後の目標値を維持（targetDmxは更新しない）
             }
             else
             {
@@ -89,22 +106,14 @@ namespace Encounter.Mapping
                     // 範囲外のピッチは無視し、最後の目標値を維持
                     if (float.IsNaN(_lastTargetDmx))
                     {
-                        // まだ有効なピッチが検出されていない場合は、現在位置を維持
+                        // まだ有効なピッチが検出されていない場合は、目標値を更新しない
                         if (enableDebugLog && elapsedTime < 5f && Time.frameCount % 30 == 0)
                         {
                             Debug.Log($"[PitchToHeightMapper] 範囲外のピッチ: {pitchHz:F1}Hz (範囲: {pitchMinHz}-{pitchMaxHz}) - 無視 (経過時間: {elapsedTime:F2}秒)");
                         }
-                        return Mathf.RoundToInt(_currentDmx);
+                        return;
                     }
-                    else
-                    {
-                        // 最後の目標値を維持
-                        targetDmx = _lastTargetDmx;
-                        if (enableDebugLog && elapsedTime < 5f && Time.frameCount % 30 == 0)
-                        {
-                            Debug.Log($"[PitchToHeightMapper] 範囲外のピッチ: {pitchHz:F1}Hz (範囲: {pitchMinHz}-{pitchMaxHz}) - 最後の目標値({_lastTargetDmx:F1})を維持 (経過時間: {elapsedTime:F2}秒)");
-                        }
-                    }
+                    // 最後の目標値を維持（targetDmxは更新しない）
                 }
                 else
                 {
@@ -117,7 +126,7 @@ namespace Encounter.Mapping
                     // 2. 0..1 -> dmxMin..dmxMax（逆マッピング：高い音 → 低いDMX値）
                     // t = 1（高い音）→ DMX 0（上段）
                     // t = 0（低い音）→ DMX 100（下段）
-                    targetDmx = Mathf.Lerp(dmxMax, dmxMin, t);
+                    float targetDmx = Mathf.Lerp(dmxMax, dmxMin, t);
                     _lastTargetDmx = targetDmx; // 最後の目標値を保存（範囲内のピッチのみ）
 
                     // デバッグログ（最初の5秒間は頻繁に、その後は1秒に1回）
@@ -128,22 +137,6 @@ namespace Encounter.Mapping
                     }
                 }
             }
-
-            // 3. スムージングと速度/加速度リミットを適用
-            // 無音時で、まだ有効なピッチが検出されていない場合は移動しない
-            if (pitchHz <= 0f && float.IsNaN(_lastTargetDmx))
-            {
-                return Mathf.RoundToInt(_currentDmx);
-            }
-
-            // 無音時で、最後の目標値が0（最上段）の場合は、現在位置を維持（最上段に戻らない）
-            if (pitchHz <= 0f && !float.IsNaN(_lastTargetDmx) && _lastTargetDmx <= dmxMin + 0.1f)
-            {
-                // 最後の目標値が最上段付近の場合は、現在位置を維持
-                return Mathf.RoundToInt(_currentDmx);
-            }
-
-            _currentDmx = ApplySmoothingAndLimits(targetDmx);
 
             // 最初の5秒間が終了したら、ピッチ履歴をログ出力
             if (enableDebugLog && elapsedTime >= 5f && _pitchHistory.Count > 0)
@@ -174,70 +167,79 @@ namespace Encounter.Mapping
                 }
                 _pitchHistory.Clear(); // 履歴をクリア（再出力を防ぐ）
             }
-
-            return Mathf.RoundToInt(_currentDmx);
         }
 
-        private float ApplySmoothingAndLimits(float targetDmx)
+        /// <summary>
+        /// 等速運動で目標位置に向かって移動（Unity画面のシミュレーション用）
+        /// </summary>
+        private void UpdateSimulation()
+        {
+            // 無音時で、まだ有効なピッチが検出されていない場合は移動しない
+            if (_lastPitchHz <= 0f && float.IsNaN(_lastTargetDmx))
+            {
+                return;
+            }
+
+            // 無音時で、最後の目標値が0（最上段）の場合は、現在位置を維持（最上段に戻らない）
+            if (_lastPitchHz <= 0f && !float.IsNaN(_lastTargetDmx) && _lastTargetDmx <= dmxMin + 0.1f)
+            {
+                return;
+            }
+
+            // 目標値が設定されている場合のみ移動
+            if (!float.IsNaN(_lastTargetDmx))
+            {
+                _currentDmx = MoveTowardsTarget(_lastTargetDmx);
+            }
+        }
+
+        private float MoveTowardsTarget(float targetDmx)
         {
             float deltaTime = Time.deltaTime;
             if (deltaTime <= 0f) return _currentDmx;
 
-            // スムージングが0の場合は即座に反映
-            if (smoothing <= 0f)
+            // 速度が0の場合は即座に反映
+            if (speed <= 0f)
             {
-                _currentDmx = targetDmx;
-                _currentVelocity = 0f;
-                return Mathf.Clamp(_currentDmx, dmxMin, dmxMax);
+                return Mathf.Clamp(targetDmx, dmxMin, dmxMax);
             }
 
-            // 目標への差分
-            float delta = targetDmx - _currentDmx;
+            // 目標位置までの距離
+            float distance = targetDmx - _currentDmx;
+            float distanceAbs = Mathf.Abs(distance);
 
-            // スムージング（指数移動平均）
-            float smoothingFactor = 1f - Mathf.Exp(-deltaTime / smoothing);
-            float smoothedDelta = delta * smoothingFactor;
+            // 1フレームで移動できる距離
+            float maxMoveDistance = speed * deltaTime;
 
-            // 速度リミット（0の場合は無制限）
-            if (maxVelocity > 0f)
+            // 目標位置までの距離が移動可能距離より大きい場合は、移動可能距離だけ移動
+            // そうでない場合は、目標位置に到達
+            float newDmx;
+            if (distanceAbs > maxMoveDistance)
             {
-                float maxDeltaByVelocity = maxVelocity * deltaTime;
-                if (Mathf.Abs(smoothedDelta) > maxDeltaByVelocity)
-                {
-                    smoothedDelta = Mathf.Sign(smoothedDelta) * maxDeltaByVelocity;
-                }
-            }
-
-            // 加速度リミット（0の場合は無制限）
-            if (maxAcceleration > 0f)
-            {
-                float targetVelocity = smoothedDelta / deltaTime;
-                float velocityDelta = targetVelocity - _currentVelocity;
-                float maxVelocityDelta = maxAcceleration * deltaTime;
-                if (Mathf.Abs(velocityDelta) > maxVelocityDelta)
-                {
-                    velocityDelta = Mathf.Sign(velocityDelta) * maxVelocityDelta;
-                }
-                _currentVelocity += velocityDelta;
+                newDmx = _currentDmx + Mathf.Sign(distance) * maxMoveDistance;
             }
             else
             {
-                // 加速度リミットがない場合は直接速度を設定
-                _currentVelocity = smoothedDelta / deltaTime;
+                newDmx = targetDmx;
             }
-
-            // 速度を適用
-            float newDmx = _currentDmx + _currentVelocity * deltaTime;
 
             // 範囲クランプ
             return Mathf.Clamp(newDmx, dmxMin, dmxMax);
         }
 
+        /// <summary>
+        /// 目標DMX値を直接設定（グラフィックイコライザー風の計算結果などを設定する場合に使用）
+        /// </summary>
+        public void SetTargetDmxValue(int targetDmx)
+        {
+            _lastTargetDmx = Mathf.Clamp((float)targetDmx, dmxMin, dmxMax);
+        }
+
         public void Reset()
         {
             _currentDmx = (float)dmxMin; // 上段から開始（DMX 0 = 約3メートル）
-            _currentVelocity = 0f;
             _lastTargetDmx = float.NaN; // 最後の目標値をリセット（まだ音が検出されていない状態）
+            _lastPitchHz = 0f; // 最後のピッチ値をリセット
             _startTime = 0f; // 開始時刻をリセット
             _pitchHistory.Clear(); // ピッチ履歴をクリア
         }
@@ -249,6 +251,12 @@ namespace Encounter.Mapping
             {
                 _currentDmx = (float)dmxMin; // 上段から開始
             }
+        }
+
+        void Update()
+        {
+            // 毎フレーム、シミュレーションを更新（Unity画面表示用）
+            UpdateSimulation();
         }
     }
 }

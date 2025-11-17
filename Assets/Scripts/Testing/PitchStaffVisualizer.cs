@@ -28,8 +28,10 @@ namespace Encounter.Testing
         public float centerX = 0f;
 
         [Header("Pitch Mapping")]
-        [Tooltip("各Squareが反応する音程範囲（Hz）")]
-        public float[] pitchRanges = new float[] { 200f, 300f, 400f, 500f, 600f }; // 低音→高音
+        [Tooltip("各Squareが反応する音程範囲の最小値（Hz）。配列の要素数はSquareの数と一致させる")]
+        public float[] pitchMinHz = new float[] { 80f, 150f, 200f, 250f, 300f }; // 各Squareの最小値
+        [Tooltip("各Squareが反応する音程範囲の最大値（Hz）。配列の要素数はSquareの数と一致させる")]
+        public float[] pitchMaxHz = new float[] { 150f, 200f, 250f, 300f, 350f }; // 各Squareの最大値
 
         [Header("Color Mapping")]
         public VolumeToColorMapper volumeMapper;
@@ -116,18 +118,36 @@ namespace Encounter.Testing
                         _pitchMappers[i] = squares[i].gameObject.AddComponent<PitchToHeightMapper>();
                     }
                     
-                    // 既存のコンポーネントの設定を更新（大人の男性から小学生まで対応）
+                    // 既存のコンポーネントの設定を更新
                     if (_pitchMappers[i] != null)
                     {
-                        _pitchMappers[i].pitchMinHz = 80f; // 大人の男性の音域の下限
-                        _pitchMappers[i].pitchMaxHz = 350f; // 小学生の音域の上限
+                        // pitchMinHz/pitchMaxHz配列から各Squareの音域範囲を設定
+                        if (i < pitchMinHz.Length && i < pitchMaxHz.Length)
+                        {
+                            _pitchMappers[i].pitchMinHz = pitchMinHz[i];
+                            _pitchMappers[i].pitchMaxHz = pitchMaxHz[i];
+                        }
+                        else
+                        {
+                            // 配列が不足している場合はデフォルト値を使用
+                            _pitchMappers[i].pitchMinHz = 80f;
+                            _pitchMappers[i].pitchMaxHz = 350f;
+                            if (enableDebugLog)
+                            {
+                                Debug.LogWarning($"[PitchStaffVisualizer] Square{i}の音域範囲配列が不足しています。デフォルト値(80-350Hz)を使用します。");
+                            }
+                        }
+                        
                         _pitchMappers[i].dmxMin = 0; // 上段（約3メートル）
                         _pitchMappers[i].dmxMax = 100; // 下段（床）
-                        _pitchMappers[i].smoothing = 0.1f; // 実際のホイストの動きに合わせて調整
-                        _pitchMappers[i].maxVelocity = 200f; // 実際のホイストの動きに合わせて設定
-                        _pitchMappers[i].maxAcceleration = 800f; // 実際のホイストの動きに合わせて設定
+                        _pitchMappers[i].speed = 50f; // 等速運動の速度（DMX値/秒）
                         _pitchMappers[i].enableDebugLog = enableDebugLog; // デバッグログの設定を適用
                         _pitchMappers[i].Reset(); // 初期値をリセット
+                        
+                        if (enableDebugLog)
+                        {
+                            Debug.Log($"[PitchStaffVisualizer] Square{i}の音域範囲: {_pitchMappers[i].pitchMinHz}Hz ～ {_pitchMappers[i].pitchMaxHz}Hz");
+                        }
                     }
                 }
             }
@@ -198,16 +218,45 @@ namespace Encounter.Testing
 
         private void UpdatePositions()
         {
-            // 音が無いときでも、最後のDMX値に向かって移動し続けるため、このチェックを削除
-
-            // 5つのSquareすべてが同じ音程に反応して上下に移動
-            // 音程が高いほど上に、低いほど下に移動
+            // グラフィックイコライザー風: 各Squareが自分の音域範囲にのみ反応
+            // 中央値でDMX最大、範囲端で0、範囲外で0
             for (int i = 0; i < squares.Length && i < 5; i++)
             {
                 if (squares[i] == null || _pitchMappers[i] == null) continue;
 
-                // ピッチをDMX高さに変換
-                int dmxHeight = _pitchMappers[i].MapPitchHzToDmx(_currentPitch);
+                // 各Squareの音域範囲を取得
+                float minHz = i < pitchMinHz.Length ? pitchMinHz[i] : 80f;
+                float maxHz = i < pitchMaxHz.Length ? pitchMaxHz[i] : 350f;
+                float centerHz = (minHz + maxHz) * 0.5f; // 中央値
+                float range = maxHz - minHz; // 範囲の幅
+
+                int dmxHeight = 0;
+
+                // ピッチが範囲内にある場合のみ計算
+                if (_currentPitch > 0f && _currentPitch >= minHz && _currentPitch <= maxHz)
+                {
+                    // 中央値からの距離を計算（0～1、中央値で0、範囲端で1）
+                    float distanceFromCenter = Mathf.Abs(_currentPitch - centerHz) / (range * 0.5f);
+                    
+                    // 距離に基づいてDMX値を計算（中央値で100、範囲端で0）
+                    // 線形補間: DMX = 100 * (1 - distanceFromCenter)
+                    float dmxFloat = 100f * (1f - Mathf.Clamp01(distanceFromCenter));
+                    dmxHeight = Mathf.RoundToInt(dmxFloat);
+                }
+                else
+                {
+                    // 範囲外または無音の場合は0
+                    dmxHeight = 0;
+                }
+
+                // グラフィックイコライザー風の計算結果を目標値として設定
+                _pitchMappers[i].SetTargetDmxValue(dmxHeight);
+                
+                // 等速運動で目標位置に向かって移動（シミュレーション）
+                int simulatedDmx = _pitchMappers[i].MapPitchHzToDmx(_currentPitch);
+                
+                // シミュレーション結果を使用（等速運動で滑らかに移動）
+                dmxHeight = simulatedDmx;
 
                 // DMX値(0-100)をY座標(staffTopY to staffBottomY)にマッピング
                 // DMX 0 = 上段（staffTopY = 3.0）
@@ -223,7 +272,7 @@ namespace Encounter.Testing
                 // デバッグログ（頻繁に出力されないように）
                 if (enableDebugLog && Time.frameCount % 60 == 0 && i == 0) // 約1秒に1回、最初のSquareのみ
                 {
-                    Debug.Log($"[PitchStaffVisualizer] ピッチ: {_currentPitch:F1}Hz, DMX: {dmxHeight}, Y: {y:F2}, 位置: {pos}");
+                    Debug.Log($"[PitchStaffVisualizer] Square{i}: ピッチ: {_currentPitch:F1}Hz, 範囲: {minHz}-{maxHz}Hz, 中央値: {centerHz:F1}Hz, DMX: {dmxHeight}, Y: {y:F2}");
                 }
             }
         }
