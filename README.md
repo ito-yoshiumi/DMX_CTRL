@@ -266,7 +266,7 @@ docs/
 - [x] SafetyManager: 非常停止（出力ゼロ/Apply停止）
 
 ### P1（展示向け）
-- [ ] VOICEVOX/COEIROINK TTS: 起動時キャッシュ→AudioClip 化
+- [x] VOICEVOX/COEIROINK TTS: 起動時キャッシュ→AudioClip 化
 - [ ] 参加者5音の録音＆ミックス再生
 - [ ] OperatorPanel: 進行/スキップ/巻き戻し/音量/UI
 - [ ] ログ保存（JSON/CSV）
