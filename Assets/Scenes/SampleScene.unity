@@ -730,6 +730,9 @@ MonoBehaviour:
   - 550
   volumeMapper: {fileID: 0}
   _enableDebugLog: 0
+  kineticLightController: {fileID: 5000000006}
+  sendHeightToDmx: 1
+  sendColorToDmx: 1
 --- !u!1 &3000000004
 GameObject:
   m_ObjectHideFlags: 0
@@ -1068,8 +1071,8 @@ MonoBehaviour:
   targetIp: 192.168.1.200
   targetPort: 6454
   net: 0
-  subnet: 1
-  universe: 0
+  subnet: 0
+  universe: 1
   bindLocalIp: 192.168.1.199
   bindInterfaceName: 
   autoSelectLocalIp: 1
@@ -1145,6 +1148,10 @@ MonoBehaviour:
     redCh: 1
     greenCh: 2
     blueCh: 3
+  forceDimmerValue: 1
+  dimmerValue: 255
+  forceStrobeValue: 1
+  strobeValue: 0
 --- !u!1 &6000000001
 GameObject:
   m_ObjectHideFlags: 0

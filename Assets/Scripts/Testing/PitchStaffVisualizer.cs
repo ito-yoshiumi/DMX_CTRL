@@ -1,6 +1,7 @@
 using UnityEngine;
 using Encounter.Audio;
 using Encounter.Mapping;
+using Encounter.DMX;
 
 namespace Encounter.Testing
 {
@@ -35,6 +36,14 @@ namespace Encounter.Testing
 
         [Header("Color Mapping")]
         public VolumeToColorMapper volumeMapper;
+
+        [Header("DMX Output")]
+        [Tooltip("KineticLightController（未設定なら自動検出）")]
+        public KineticLightController kineticLightController;
+        [Tooltip("ピッチに応じた高さをDMX機器にも送信するか")]
+        public bool sendHeightToDmx = true;
+        [Tooltip("音量に応じた色をDMX機器にも送信するか")]
+        public bool sendColorToDmx = true;
 
         [Header("Debug")]
         [Tooltip("PitchToHeightMapperのデバッグログを表示するかどうか")]
@@ -79,6 +88,17 @@ namespace Encounter.Testing
                 {
                     Debug.LogError("[PitchStaffVisualizer] AudioInputManagerが見つかりません。");
                     return;
+                }
+            }
+
+            if (kineticLightController == null && sendHeightToDmx)
+            {
+                kineticLightController = FindFirstObjectByType<KineticLightController>();
+                if (kineticLightController == null)
+                {
+                    Debug.LogWarning("[PitchStaffVisualizer] KineticLightControllerが見つかりません。DMX送信をスキップします。");
+                    sendHeightToDmx = false;
+                    sendColorToDmx = false;
                 }
             }
 
@@ -274,6 +294,16 @@ namespace Encounter.Testing
                 {
                     Debug.Log($"[PitchStaffVisualizer] Square{i}: ピッチ: {_currentPitch:F1}Hz, 範囲: {minHz}-{maxHz}Hz, 中央値: {centerHz:F1}Hz, DMX: {dmxHeight}, Y: {y:F2}");
                 }
+
+                if (sendHeightToDmx && kineticLightController != null)
+                {
+                    kineticLightController.SetFixtureHeight(i, Mathf.Clamp(dmxHeight, 0, 100));
+                }
+            }
+
+            if (sendHeightToDmx && kineticLightController != null)
+            {
+                kineticLightController.Apply();
             }
         }
 
@@ -289,7 +319,16 @@ namespace Encounter.Testing
                 if (squares[i] != null)
                 {
                     squares[i].color = color;
+                    if (sendColorToDmx && kineticLightController != null)
+                    {
+                        kineticLightController.SetFixtureColor(i, color);
+                    }
                 }
+            }
+
+            if (sendColorToDmx && kineticLightController != null)
+            {
+                kineticLightController.Apply();
             }
         }
     }
