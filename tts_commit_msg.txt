@@ -1,0 +1,19 @@
+Implement VOICEVOX/COEIROINK TTS service
+
+- TTSService: VOICEVOX/COEIROINKエンジンとのHTTP API連携
+- 起動時の事前合成（PrewarmAsync）機能
+- WAVデータをAudioClipに変換する機能
+- キャッシュ機能の実装
+
+- TTSServiceEditor: Unityエディタ拡張機能
+- /speakersエンドポイントから話者一覧を取得
+- Inspectorで話者を選択できる機能
+
+- ScenarioRunner: TTSサービスの統合
+- ドキュメント: WAVファイルをTTSに置き換え
+- intro1, greeting_signalをTTSに変更
+
+- ドキュメント追加:
+  - VOICEVOX_SETUP.md: セットアップガイド
+  - TESTING.md: TTSテスト手順を追加
+

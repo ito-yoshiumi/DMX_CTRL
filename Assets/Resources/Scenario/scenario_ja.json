@@ -2,15 +2,15 @@
   "entries": [
     {
       "id": "intro1",
-      "type": "wav",
-      "path": "Audio/WAV/intro_ja",
+      "type": "tts",
+      "text": "こんにちは。キネティックライトの体験へようこそ",
       "dmxCue": "Cues/intro_light",
       "waitAfter": 0.3
     },
     {
       "id": "greeting_signal",
-      "type": "wav",
-      "path": "Audio/WAV/5note_prompt",
+      "type": "tts",
+      "text": "ドレミファソ",
       "dmxCue": "Cues/5note_light",
       "waitAfter": 0.3
     },
