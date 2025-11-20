@@ -29,6 +29,16 @@ namespace Encounter.DMX
             Apply();
         }
 
+        void OnDisable()
+        {
+            SendBlackout();
+        }
+
+        void OnApplicationQuit()
+        {
+            SendBlackout();
+        }
+
         public void SetFixtureHeight(int index, int dmxValue01_255)
         {
             if (!IsValid(index)) return;
@@ -87,6 +97,16 @@ namespace Encounter.DMX
                 int strobe = fixture.startAddress + fixture.strobeCh - 2;
                 Write(strobe, (byte)Mathf.Clamp(strobeValue, 0, 255));
             }
+        }
+
+        private void SendBlackout()
+        {
+            if (artNet == null) return;
+            for (int i = 0; i < _dmx.Length; i++)
+            {
+                _dmx[i] = 0;
+            }
+            artNet.SendDmx(_dmx);
         }
 
         private bool IsValid(int index) => fixtures != null && index >= 0 && index < fixtures.Count;
