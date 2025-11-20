@@ -267,7 +267,7 @@ docs/
 
 ### P1（展示向け）
 - [x] VOICEVOX/COEIROINK TTS: 起動時キャッシュ→AudioClip 化
-- [ ] 参加者5音の録音＆ミックス再生
+- [x] 参加者5音の録音＆ミックス再生
 - [ ] OperatorPanel: 進行/スキップ/巻き戻し/音量/UI
 - [ ] ログ保存（JSON/CSV）
 
@@ -296,4 +296,3 @@ docs/
 
 - [テスト手順](docs/TESTING.md)
 - [VOICEVOX設定手順](docs/VOICEVOX_SETUP.md)
-- [実装タスク一覧](docs/Tasks/todo.md)

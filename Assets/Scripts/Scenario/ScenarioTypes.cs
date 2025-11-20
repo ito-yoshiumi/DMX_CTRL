@@ -15,6 +15,8 @@ namespace Encounter.Scenario
         public float waitAfter;   // 再生後に待つ秒数(任意)
         public bool record;       // 録音するか
         public float recordSeconds = 0f;
+        public bool playRecordedMix; // 録音済み音声を再生するか
+        public string mixReferenceClip; // ミックス時に重ねる参照クリップ(Resources)
     }
 
     [Serializable]

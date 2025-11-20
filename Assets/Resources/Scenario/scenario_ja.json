@@ -37,21 +37,48 @@
       "type": "tts",
       "text": "まずはいちおんめのおと。さん、にー、いち",
       "record": true,
-      "recordSeconds": 2.0
+      "recordSeconds": 2.0,
+      "waitAfter": 0.2
+    },
+    {
+      "id": "imitate_2",
+      "type": "tts",
+      "text": "におんめ。さん、にー、いち",
+      "record": true,
+      "recordSeconds": 2.0,
+      "waitAfter": 0.2
+    },
+    {
+      "id": "imitate_3",
+      "type": "tts",
+      "text": "さんおんめ。さん、にー、いち",
+      "record": true,
+      "recordSeconds": 2.0,
+      "waitAfter": 0.2
+    },
+    {
+      "id": "imitate_4",
+      "type": "tts",
+      "text": "よんおんめ。さん、にー、いち",
+      "record": true,
+      "recordSeconds": 2.0,
+      "waitAfter": 0.2
     },
     {
       "id": "imitate_5",
       "type": "tts",
       "text": "ごおんめ。さん、にー、いち",
       "record": true,
-      "recordSeconds": 2.0
+      "recordSeconds": 2.0,
+      "waitAfter": 0.2
     },
     {
       "id": "finale",
       "type": "tts",
       "text": "いっしょにあいさつしてみよう",
       "dmxCue": "Cues/5note_light",
-      "waitAfter": 0.2
+      "waitAfter": 0.2,
+      "playRecordedMix": true
     }
   ]
 }

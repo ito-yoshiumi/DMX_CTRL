@@ -16,6 +16,7 @@ namespace Encounter.Scenario
         public TTSService ttsService;
         public CuePlayer cuePlayer;
         public AudioInputManager audioInputManager;
+        public ParticipantRecordingManager participantRecorder;
 
         [Header("Debug")]
         [Tooltip("デバッグログを表示するかどうか")]
@@ -52,6 +53,11 @@ namespace Encounter.Scenario
             else
             {
                 Debug.LogError($"[ScenarioRunner] シナリオファイルが見つかりません: {scenarioResource} (経過時間: {Time.time:F2}秒)");
+            }
+
+            if (participantRecorder == null)
+            {
+                participantRecorder = FindFirstObjectByType<ParticipantRecordingManager>();
             }
 
             // TTS 事前合成（必要なら）
@@ -121,6 +127,7 @@ namespace Encounter.Scenario
             {
                 audioSource.Stop();
             }
+            participantRecorder?.ClearRecordings();
             if (enableDebugLog)
             {
                 Debug.Log("[ScenarioRunner] シナリオ停止");
@@ -151,6 +158,9 @@ namespace Encounter.Scenario
                     }
                 }
 
+                float waitAfter = e.waitAfter;
+                float clipDuration = 0f;
+
                 if (clip != null && audioSource != null)
                 {
                     // DMXキュー開始
@@ -161,36 +171,68 @@ namespace Encounter.Scenario
 
                     audioSource.clip = clip;
                     audioSource.Play();
-
-                    yield return new WaitForSeconds(clip.length + e.waitAfter);
+                    clipDuration = clip.length;
+                    yield return new WaitForSeconds(clipDuration);
                 }
                 else if (e.type == "tts" && ttsService == null)
                 {
                     // TTSサービスがない場合は待機時間だけ待つ
-                    yield return new WaitForSeconds(e.waitAfter);
+                    yield return new WaitForSeconds(waitAfter);
+                    continue;
                 }
 
                 // 録音機能
                 if (e.record && e.recordSeconds > 0f)
                 {
-                    if (audioInputManager != null)
+                    if (participantRecorder != null)
                     {
                         if (enableDebugLog)
                         {
-                            Debug.Log($"[ScenarioRunner] 録音開始: {e.recordSeconds}秒");
+                            Debug.Log($"[ScenarioRunner] 参加者録音開始: {e.recordSeconds}秒");
                         }
-                        // AudioInputManagerの録音機能を使用（実装後に連携）
-                        // 現時点では待機時間だけ待つ
-                        yield return new WaitForSeconds(e.recordSeconds);
+                        yield return participantRecorder.RecordAsync(e.recordSeconds);
                     }
                     else
                     {
                         if (enableDebugLog)
                         {
-                            Debug.LogWarning("[ScenarioRunner] AudioInputManagerが設定されていません。録音をスキップします。");
+                            Debug.LogWarning("[ScenarioRunner] ParticipantRecordingManagerが設定されていません。録音をスキップします。");
                         }
-                        yield return new WaitForSeconds(e.recordSeconds);
                     }
+                }
+
+                if (e.playRecordedMix && participantRecorder != null)
+                {
+                    AudioClip referenceClip = null;
+                    if (!string.IsNullOrEmpty(e.mixReferenceClip))
+                    {
+                        referenceClip = Resources.Load<AudioClip>(e.mixReferenceClip);
+                        if (referenceClip == null && enableDebugLog)
+                        {
+                            Debug.LogWarning($"[ScenarioRunner] ミックス参照クリップが見つかりません: {e.mixReferenceClip}");
+                        }
+                    }
+
+                    AudioClip mixClip = participantRecorder.BuildMixClip(referenceClip);
+                    if (mixClip != null && audioSource != null)
+                    {
+                        if (enableDebugLog)
+                        {
+                            Debug.Log("[ScenarioRunner] 録音ミックスを再生します。");
+                        }
+                        audioSource.clip = mixClip;
+                        audioSource.Play();
+                        yield return new WaitForSeconds(mixClip.length);
+                    }
+                    else if (enableDebugLog)
+                    {
+                        Debug.LogWarning("[ScenarioRunner] 再生できるミックスがありません。");
+                    }
+                }
+
+                if (waitAfter > 0f)
+                {
+                    yield return new WaitForSeconds(waitAfter);
                 }
             }
 

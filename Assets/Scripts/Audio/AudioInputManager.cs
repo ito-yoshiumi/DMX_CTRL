@@ -1,5 +1,6 @@
 using UnityEngine;
 using System;
+using System.Collections;
 
 namespace Encounter.Audio
 {
@@ -32,6 +33,7 @@ namespace Encounter.Audio
         private float _lastAnalysisTime;
         private RMSMeter _rmsMeter;
         private PitchEstimator _pitchEstimator;
+        private bool _isRecordingSegment;
 
         void Awake()
         {
@@ -200,6 +202,92 @@ namespace Encounter.Audio
             StopMicrophone();
             microphoneName = deviceName;
             StartMicrophone();
+        }
+
+        public IEnumerator RecordClipCoroutine(float durationSeconds, Action<AudioClip> onCompleted)
+        {
+            if (_isRecordingSegment)
+            {
+                Debug.LogWarning("[AudioInputManager] 既に録音処理中です。");
+                yield break;
+            }
+
+            if (string.IsNullOrEmpty(_currentMicName))
+            {
+                Debug.LogWarning("[AudioInputManager] マイクが初期化されていません。");
+                onCompleted?.Invoke(null);
+                yield break;
+            }
+
+            _isRecordingSegment = true;
+
+            StopMicrophone();
+            yield return null;
+
+            int recordLengthSeconds = Mathf.CeilToInt(durationSeconds + 0.5f);
+
+            AudioClip tempClip = null;
+            try
+            {
+                tempClip = Microphone.Start(_currentMicName, false, Mathf.Max(1, recordLengthSeconds), sampleRate);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[AudioInputManager] 録音開始に失敗しました: {e.Message}");
+                StartMicrophone();
+                _isRecordingSegment = false;
+                onCompleted?.Invoke(null);
+                yield break;
+            }
+
+            if (tempClip == null)
+            {
+                Debug.LogError("[AudioInputManager] Microphone.Start が null を返しました。");
+                StartMicrophone();
+                _isRecordingSegment = false;
+                onCompleted?.Invoke(null);
+                yield break;
+            }
+
+            // 開始を待つ
+            while (Microphone.GetPosition(_currentMicName) <= 0)
+            {
+                yield return null;
+            }
+
+            float endTime = Time.time + durationSeconds;
+            while (Time.time < endTime)
+            {
+                yield return null;
+            }
+
+            int position = Microphone.GetPosition(_currentMicName);
+            Microphone.End(_currentMicName);
+
+            int channels = tempClip.channels;
+            int validSamples = position > 0 ? Mathf.Min(position, tempClip.samples) : tempClip.samples;
+            if (validSamples <= 0)
+            {
+                Debug.LogWarning("[AudioInputManager] 録音サンプルが取得できませんでした。");
+                StartMicrophone();
+                _isRecordingSegment = false;
+                onCompleted?.Invoke(null);
+                yield break;
+            }
+
+            float[] rawData = new float[tempClip.samples * channels];
+            tempClip.GetData(rawData, 0);
+
+            int totalLength = validSamples * channels;
+            float[] trimmed = new float[totalLength];
+            Array.Copy(rawData, trimmed, totalLength);
+
+            AudioClip clip = AudioClip.Create($"Participant_{DateTime.Now:HHmmss}", validSamples, channels, sampleRate, false);
+            clip.SetData(trimmed, 0);
+
+            StartMicrophone();
+            _isRecordingSegment = false;
+            onCompleted?.Invoke(clip);
         }
     }
 }

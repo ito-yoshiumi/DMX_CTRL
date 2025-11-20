@@ -793,6 +793,7 @@ GameObject:
   - component: {fileID: 4000000002}
   - component: {fileID: 4000000003}
   - component: {fileID: 4000000004}
+  - component: {fileID: 4000000016}
   m_Layer: 0
   m_Name: TestController
   m_TagString: Untagged
@@ -847,7 +848,24 @@ MonoBehaviour:
   ttsService: {fileID: 7000000003}
   cuePlayer: {fileID: 4000000010}
   audioInputManager: {fileID: 3000000006}
+  participantRecorder: {fileID: 4000000016}
   enableDebugLog: 1
+--- !u!114 &4000000016
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4000000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a4c5b6c52a3c4d4eaad1d3efa913861, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  audioInputManager: {fileID: 3000000006}
+  maxRecordings: 5
+  normalizeMix: 1
+  enableDebugLog: 0
 --- !u!1 &4000000005
 GameObject:
   m_ObjectHideFlags: 0
