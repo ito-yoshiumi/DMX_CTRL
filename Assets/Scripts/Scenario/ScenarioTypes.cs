@@ -17,6 +17,7 @@ namespace Encounter.Scenario
         public float recordSeconds = 0f;
         public bool playRecordedMix; // 録音済み音声を再生するか
         public string mixReferenceClip; // ミックス時に重ねる参照クリップ(Resources)
+        public string mixReferenceEntryId; // ミックス時に重ねる参照エントリID（TTS/WAV）
     }
 
     [Serializable]

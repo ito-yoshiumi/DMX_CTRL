@@ -204,7 +204,38 @@ namespace Encounter.Scenario
                 if (e.playRecordedMix && participantRecorder != null)
                 {
                     AudioClip referenceClip = null;
-                    if (!string.IsNullOrEmpty(e.mixReferenceClip))
+                    
+                    // mixReferenceEntryIdが指定されている場合、シナリオ内のエントリを検索
+                    if (!string.IsNullOrEmpty(e.mixReferenceEntryId))
+                    {
+                        var referenceEntry = _scenario.entries.Find(entry => entry.id == e.mixReferenceEntryId);
+                        if (referenceEntry != null)
+                        {
+                            if (referenceEntry.type == "wav" && !string.IsNullOrEmpty(referenceEntry.path))
+                            {
+                                referenceClip = Resources.Load<AudioClip>(referenceEntry.path);
+                            }
+                            else if (referenceEntry.type == "tts" && ttsService != null && !string.IsNullOrEmpty(referenceEntry.text))
+                            {
+                                referenceClip = ttsService.GetCachedClip(referenceEntry.text);
+                            }
+                            
+                            if (referenceClip == null && enableDebugLog)
+                            {
+                                Debug.LogWarning($"[ScenarioRunner] 参照エントリ '{e.mixReferenceEntryId}' の音声が取得できません。");
+                            }
+                            else if (enableDebugLog)
+                            {
+                                Debug.Log($"[ScenarioRunner] 参照エントリ '{e.mixReferenceEntryId}' の音声をミックスに追加します。");
+                            }
+                        }
+                        else if (enableDebugLog)
+                        {
+                            Debug.LogWarning($"[ScenarioRunner] 参照エントリ '{e.mixReferenceEntryId}' が見つかりません。");
+                        }
+                    }
+                    // mixReferenceClipが指定されている場合、Resourcesからロード
+                    else if (!string.IsNullOrEmpty(e.mixReferenceClip))
                     {
                         referenceClip = Resources.Load<AudioClip>(e.mixReferenceClip);
                         if (referenceClip == null && enableDebugLog)
@@ -218,7 +249,11 @@ namespace Encounter.Scenario
                     {
                         if (enableDebugLog)
                         {
-                            Debug.Log("[ScenarioRunner] 録音ミックスを再生します。");
+                            int recordingCount = participantRecorder.RecordedClips.Count;
+                            string mixInfo = referenceClip != null 
+                                ? $"（参加者{recordingCount}音 + お手本）" 
+                                : $"（参加者{recordingCount}音）";
+                            Debug.Log($"[ScenarioRunner] 録音ミックスを再生します{mixInfo}。");
                         }
                         audioSource.clip = mixClip;
                         audioSource.Play();

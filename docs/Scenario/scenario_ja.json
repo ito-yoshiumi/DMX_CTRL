@@ -78,7 +78,8 @@
       "text": "いっしょにあいさつしてみよう",
       "dmxCue": "Cues/5note_light",
       "waitAfter": 0.2,
-      "playRecordedMix": true
+      "playRecordedMix": true,
+      "mixReferenceEntryId": "greeting_signal"
     }
   ]
 }
