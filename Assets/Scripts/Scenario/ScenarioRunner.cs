@@ -151,10 +151,18 @@ namespace Encounter.Scenario
                 }
                 else if (e.type == "tts" && ttsService != null)
                 {
-                    clip = ttsService.GetCachedClip(e.text);
+                    clip = ttsService.GetCachedClip(e.text, e.pitchNotes, e.speedScale, e.labFilePath);
                     if (clip == null && enableDebugLog)
                     {
                         Debug.LogWarning($"[ScenarioRunner] TTSクリップが取得できません: {e.text}");
+                    }
+                }
+                else if ((e.type == "singing" || (e.singingNotes != null && e.singingNotes.Length > 0)) && ttsService != null)
+                {
+                    clip = ttsService.GetCachedSingingClip(e.singingNotes);
+                    if (clip == null && enableDebugLog)
+                    {
+                        Debug.LogWarning($"[ScenarioRunner] 歌声合成クリップが取得できません");
                     }
                 }
 
@@ -169,10 +177,26 @@ namespace Encounter.Scenario
                         cuePlayer.PlayCue(e.dmxCue);
                     }
 
+                    if (enableDebugLog)
+                    {
+                        Debug.Log($"[ScenarioRunner] 音声再生開始: \"{e.text ?? e.path}\" ({clip.length:F2}秒, サンプルレート: {clip.frequency}Hz)");
+                    }
+                    
                     audioSource.clip = clip;
                     audioSource.Play();
                     clipDuration = clip.length;
+                    
+                    if (enableDebugLog)
+                    {
+                        Debug.Log($"[ScenarioRunner] 音声再生中: {clipDuration:F2}秒待機します");
+                    }
+                    
                     yield return new WaitForSeconds(clipDuration);
+                    
+                    if (enableDebugLog)
+                    {
+                        Debug.Log($"[ScenarioRunner] 音声再生完了: \"{e.text ?? e.path}\"");
+                    }
                 }
                 else if (e.type == "tts" && ttsService == null)
                 {
@@ -217,7 +241,7 @@ namespace Encounter.Scenario
                             }
                             else if (referenceEntry.type == "tts" && ttsService != null && !string.IsNullOrEmpty(referenceEntry.text))
                             {
-                                referenceClip = ttsService.GetCachedClip(referenceEntry.text);
+                                referenceClip = ttsService.GetCachedClip(referenceEntry.text, referenceEntry.pitchNotes, referenceEntry.speedScale, referenceEntry.labFilePath);
                             }
                             
                             if (referenceClip == null && enableDebugLog)

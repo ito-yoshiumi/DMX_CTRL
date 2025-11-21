@@ -9,10 +9,17 @@
     },
     {
       "id": "greeting_signal",
-      "type": "tts",
+      "type": "singing",
       "text": "ドレミファソ",
       "dmxCue": "Cues/5note_light",
-      "waitAfter": 0.3
+      "waitAfter": 0.3,
+      "singingNotes": [
+        { "key": 60, "frame_length": 45, "lyric": "ド" },
+        { "key": 62, "frame_length": 45, "lyric": "レ" },
+        { "key": 64, "frame_length": 45, "lyric": "ミ" },
+        { "key": 65, "frame_length": 45, "lyric": "ファ" },
+        { "key": 67, "frame_length": 45, "lyric": "ソ" }
+      ]
     },
     {
       "id": "ask_user",
