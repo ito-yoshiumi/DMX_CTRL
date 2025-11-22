@@ -27,6 +27,8 @@ namespace Encounter.Testing
         public float squareSpacing = 1f;
         [Tooltip("SquareのX座標の中心")]
         public float centerX = 0f;
+        [Tooltip("Squareのサイズ（幅と高さ、メートル単位）")]
+        public float squareSize = 0.3f;
 
         [Header("Pitch Mapping")]
         [Tooltip("各Squareが反応する音程範囲の最小値（Hz）。配列の要素数はSquareの数と一致させる")]
@@ -128,8 +130,8 @@ namespace Encounter.Testing
                     _initialPositions[i] = new Vector3(x, staffTopY, 0f);
                     squares[i].transform.position = _initialPositions[i];
                     
-                    // Squareのサイズを30センチ（0.3m）に設定
-                    squares[i].transform.localScale = new Vector3(0.3f, 0.3f, 1f);
+                    // Squareのサイズを設定
+                    squares[i].transform.localScale = new Vector3(squareSize, squareSize, 1f);
 
                     // 各SquareにPitchToHeightMapperを追加
                     _pitchMappers[i] = squares[i].gameObject.GetComponent<PitchToHeightMapper>();

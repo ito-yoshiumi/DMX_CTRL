@@ -25,8 +25,18 @@ namespace Encounter.DMX
 
         void Start()
         {
+            if (artNet == null)
+            {
+                Debug.LogError("[KineticLightController] ArtNetClientが設定されていません！");
+                return;
+            }
+            
+            Debug.Log($"[KineticLightController] 初期化: フィクスチャ数={fixtures?.Count ?? 0}, forceDimmer={forceDimmerValue}, dimmerValue={dimmerValue}, forceStrobe={forceStrobeValue}, strobeValue={strobeValue}");
+            
             ApplyFixtureDefaults();
             Apply();
+            
+            Debug.Log("[KineticLightController] 初期化完了: デフォルト値を送信しました");
         }
 
         void OnDisable()
@@ -61,9 +71,26 @@ namespace Encounter.DMX
             ApplyFixtureDefaults(f);
         }
 
+        private int _applyCount = 0;
+        private float _lastApplyLogTime = 0f;
+        private const float APPLY_LOG_INTERVAL = 5f;
+
         public void Apply()
         {
-            if (artNet == null) return;
+            if (artNet == null)
+            {
+                Debug.LogError("[KineticLightController] Apply: ArtNetClientがnullです");
+                return;
+            }
+            
+            _applyCount++;
+            float currentTime = Time.realtimeSinceStartup;
+            if (currentTime - _lastApplyLogTime > APPLY_LOG_INTERVAL)
+            {
+                Debug.Log($"[KineticLightController] Apply呼び出し: {_applyCount}回目");
+                _lastApplyLogTime = currentTime;
+            }
+            
             artNet.SendDmx(_dmx);
         }
 

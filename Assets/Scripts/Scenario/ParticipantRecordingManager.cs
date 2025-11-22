@@ -16,15 +16,125 @@ namespace Encounter.Scenario
         public int maxRecordings = 5;
         [Tooltip("ミックス時にクリップを正規化するか")]
         public bool normalizeMix = true;
+        
+        [Header("Voice-Triggered Recording")]
+        [Tooltip("音声検出による自動録音を有効にするか")]
+        public bool enableVoiceTriggeredRecording = false;
+        
+        [Tooltip("音声検出時の最大録音時間（秒）")]
+        [Range(1f, 10f)]
+        public float maxRecordingDuration = 5f;
 
         [Header("Debug")]
         public bool enableDebugLog = true;
 
         private readonly List<AudioClip> _recordedClips = new();
+        private Coroutine _voiceTriggeredRecordingCoroutine;
 
         public IReadOnlyList<AudioClip> RecordedClips => _recordedClips;
 
         public void ClearRecordings() => _recordedClips.Clear();
+
+        void Start()
+        {
+            if (audioInputManager == null)
+            {
+                audioInputManager = FindFirstObjectByType<AudioInputManager>();
+            }
+
+            if (audioInputManager != null && enableVoiceTriggeredRecording)
+            {
+                audioInputManager.OnVoiceDetected += OnVoiceDetected;
+                audioInputManager.OnVoiceEnded += OnVoiceEnded;
+            }
+        }
+
+        void OnDestroy()
+        {
+            if (audioInputManager != null)
+            {
+                audioInputManager.OnVoiceDetected -= OnVoiceDetected;
+                audioInputManager.OnVoiceEnded -= OnVoiceEnded;
+            }
+
+            if (_voiceTriggeredRecordingCoroutine != null)
+            {
+                StopCoroutine(_voiceTriggeredRecordingCoroutine);
+            }
+        }
+
+        private void OnVoiceDetected()
+        {
+            if (!enableVoiceTriggeredRecording) return;
+            if (_voiceTriggeredRecordingCoroutine != null) return; // 既に録音中
+
+            if (enableDebugLog)
+            {
+                Debug.Log("[ParticipantRecordingManager] 音声検出: 録音を開始します");
+            }
+
+            _voiceTriggeredRecordingCoroutine = StartCoroutine(RecordOnVoiceDetected());
+        }
+
+        private void OnVoiceEnded()
+        {
+            if (!enableVoiceTriggeredRecording) return;
+            if (_voiceTriggeredRecordingCoroutine == null) return; // 録音中でない
+
+            if (enableDebugLog)
+            {
+                Debug.Log("[ParticipantRecordingManager] 音声終了: 録音を停止します");
+            }
+
+            // 録音は自動的に停止される（最大録音時間または音声終了で）
+        }
+
+        private IEnumerator RecordOnVoiceDetected()
+        {
+            if (audioInputManager == null) yield break;
+
+            AudioClip recordedClip = null;
+            float startTime = Time.time;
+            bool recordingCompleted = false;
+
+            // 録音開始
+            Coroutine recordCoroutine = StartCoroutine(audioInputManager.RecordClipCoroutine(
+                maxRecordingDuration,
+                clip =>
+                {
+                    recordedClip = clip;
+                    recordingCompleted = true;
+                }));
+
+            // 音声終了または最大録音時間まで待機
+            while (!recordingCompleted && (Time.time - startTime) < maxRecordingDuration)
+            {
+                yield return null;
+            }
+
+            // 録音が完了するまで待機
+            while (!recordingCompleted)
+            {
+                yield return null;
+            }
+
+            _voiceTriggeredRecordingCoroutine = null;
+
+            if (recordedClip != null)
+            {
+                if (_recordedClips.Count >= Mathf.Max(1, maxRecordings))
+                {
+                    _recordedClips.RemoveAt(0);
+                }
+
+                _recordedClips.Add(recordedClip);
+
+                if (enableDebugLog)
+                {
+                    Debug.Log($"[ParticipantRecordingManager] 音声検出録音を追加: {_recordedClips.Count}/{maxRecordings} (長さ: {recordedClip.length:F2}秒)");
+                }
+            }
+        }
 
         public IEnumerator RecordAsync(float durationSeconds)
         {

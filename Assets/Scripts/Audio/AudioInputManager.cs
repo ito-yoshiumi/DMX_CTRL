@@ -19,12 +19,29 @@ namespace Encounter.Audio
         [Tooltip("解析用サンプル数")]
         public int sampleLength = 4096;
 
+        [Header("Voice Detection")]
+        [Tooltip("音声検出のRMS閾値（0-1）")]
+        [Range(0f, 1f)]
+        public float voiceDetectionThreshold = 0.05f;
+        
+        [Tooltip("音声検出の最小継続時間（秒）。この時間以上音声が続いた場合のみ検出")]
+        [Range(0f, 1f)]
+        public float voiceDetectionMinDuration = 0.1f;
+        
+        [Tooltip("音声終了検出の無音継続時間（秒）。この時間無音が続いた場合に音声終了と判定")]
+        [Range(0f, 2f)]
+        public float voiceEndSilenceDuration = 0.3f;
+
         [Header("Debug")]
         [Tooltip("デバッグログを表示するかどうか")]
         public bool enableDebugLog = true;
 
         public event Action<float> OnRms;           // 0..1程度
         public event Action<float> OnPitchHz;       // 推定周波数(Hz)，未検出時は <=0
+        public event Action OnVoiceDetected;        // 音声検出開始
+        public event Action OnVoiceEnded;           // 音声検出終了
+        
+        public float CurrentRms { get; private set; }  // 現在のRMS値（0-1）
 
         public AudioClip CurrentClip { get; private set; }
 
@@ -34,6 +51,12 @@ namespace Encounter.Audio
         private RMSMeter _rmsMeter;
         private PitchEstimator _pitchEstimator;
         private bool _isRecordingSegment;
+        
+        // 音声検出用の状態
+        private bool _isVoiceDetected;
+        private float _voiceStartTime;
+        private float _lastVoiceTime;
+        private float _silenceStartTime;
 
         void Awake()
         {
@@ -173,10 +196,14 @@ namespace Encounter.Audio
             {
                 // RMS計算
                 float rms = _rmsMeter.ComputeRms01(_samples);
+                CurrentRms = rms;
                 OnRms?.Invoke(rms);
 
                 // ピッチ推定
                 float pitchHz = _pitchEstimator.EstimatePitchHz(_samples, sampleRate);
+                
+                // 音声検出処理
+                DetectVoice(rms);
                 
                 // デバッグログ（頻繁に出力されないように）
                 if (enableDebugLog && Time.frameCount % 60 == 0) // 約1秒に1回
@@ -192,6 +219,75 @@ namespace Encounter.Audio
                 }
                 
                 OnPitchHz?.Invoke(pitchHz);
+            }
+        }
+
+        private void DetectVoice(float rms)
+        {
+            float currentTime = Time.time;
+            bool isAboveThreshold = rms >= voiceDetectionThreshold;
+            
+            if (isAboveThreshold)
+            {
+                // 閾値以上の場合
+                if (!_isVoiceDetected)
+                {
+                    // 音声検出開始の可能性
+                    if (_voiceStartTime <= 0f)
+                    {
+                        _voiceStartTime = currentTime;
+                    }
+                    else if (currentTime - _voiceStartTime >= voiceDetectionMinDuration)
+                    {
+                        // 最小継続時間を超えたので音声検出開始
+                        _isVoiceDetected = true;
+                        _lastVoiceTime = currentTime;
+                        _silenceStartTime = 0f;
+                        OnVoiceDetected?.Invoke();
+                        
+                        if (enableDebugLog)
+                        {
+                            Debug.Log($"[AudioInputManager] 音声検出開始 (RMS: {rms:F3}, 閾値: {voiceDetectionThreshold:F3})");
+                        }
+                    }
+                }
+                else
+                {
+                    // 既に音声検出中
+                    _lastVoiceTime = currentTime;
+                    _silenceStartTime = 0f;
+                }
+            }
+            else
+            {
+                // 閾値未満の場合
+                if (_isVoiceDetected)
+                {
+                    // 音声検出中だが無音になった
+                    if (_silenceStartTime <= 0f)
+                    {
+                        _silenceStartTime = currentTime;
+                    }
+                    else if (currentTime - _silenceStartTime >= voiceEndSilenceDuration)
+                    {
+                        // 無音が続いたので音声終了
+                        _isVoiceDetected = false;
+                        _voiceStartTime = 0f;
+                        _silenceStartTime = 0f;
+                        OnVoiceEnded?.Invoke();
+                        
+                        if (enableDebugLog)
+                        {
+                            Debug.Log($"[AudioInputManager] 音声検出終了 (無音継続時間: {voiceEndSilenceDuration:F2}秒)");
+                        }
+                    }
+                }
+                else
+                {
+                    // 音声検出していない状態で無音
+                    _voiceStartTime = 0f;
+                    _silenceStartTime = 0f;
+                }
             }
         }
 

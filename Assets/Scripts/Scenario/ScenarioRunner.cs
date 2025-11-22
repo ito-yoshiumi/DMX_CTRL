@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 using Encounter.DMX;
 using Encounter.Audio;
 
@@ -243,6 +244,10 @@ namespace Encounter.Scenario
                             {
                                 referenceClip = ttsService.GetCachedClip(referenceEntry.text, referenceEntry.pitchNotes, referenceEntry.speedScale, referenceEntry.labFilePath);
                             }
+                            else if (referenceEntry.type == "singing" && ttsService != null && referenceEntry.singingNotes != null && referenceEntry.singingNotes.Length > 0)
+                            {
+                                referenceClip = ttsService.GetCachedSingingClip(referenceEntry.singingNotes);
+                            }
                             
                             if (referenceClip == null && enableDebugLog)
                             {
@@ -250,7 +255,7 @@ namespace Encounter.Scenario
                             }
                             else if (enableDebugLog)
                             {
-                                Debug.Log($"[ScenarioRunner] 参照エントリ '{e.mixReferenceEntryId}' の音声をミックスに追加します。");
+                                Debug.Log($"[ScenarioRunner] 参照エントリ '{e.mixReferenceEntryId}' の音声を再生します。");
                             }
                         }
                         else if (enableDebugLog)
@@ -268,24 +273,124 @@ namespace Encounter.Scenario
                         }
                     }
 
-                    AudioClip mixClip = participantRecorder.BuildMixClip(referenceClip);
-                    if (mixClip != null && audioSource != null)
+                    // リズムを合わせた再生：お手本音声の各音のタイミングに合わせて参加者の録音を同時に再生
+                    var recordedClips = participantRecorder.RecordedClips;
+                    if (referenceClip != null && recordedClips != null && recordedClips.Count > 0 && audioSource != null)
                     {
+                        // 参照エントリからsingingNotesを取得してタイミングを計算
+                        var referenceEntry = _scenario.entries.Find(entry => entry.id == e.mixReferenceEntryId);
+                        if (referenceEntry != null && referenceEntry.singingNotes != null && referenceEntry.singingNotes.Length > 0)
+                        {
+                            // お手本音声を再生開始
+                            if (enableDebugLog)
+                            {
+                                Debug.Log("[ScenarioRunner] お手本音声と参加者録音をリズムに合わせて同時再生します。");
+                            }
+                            
+                            audioSource.clip = referenceClip;
+                            audioSource.Play();
+                            
+                            // 追加のAudioSourceを作成（参加者録音用）
+                            List<AudioSource> participantAudioSources = new List<AudioSource>();
+                            for (int i = 0; i < recordedClips.Count && i < 5; i++)
+                            {
+                                GameObject audioObj = new GameObject($"ParticipantAudioSource_{i}");
+                                audioObj.transform.SetParent(transform);
+                                AudioSource participantSource = audioObj.AddComponent<AudioSource>();
+                                participantSource.playOnAwake = false;
+                                participantAudioSources.Add(participantSource);
+                            }
+                            
+                            // 各音のタイミングを計算（1フレーム = 約0.01秒、100fps想定）
+                            const float frameToSeconds = 0.01f;
+                            float currentTime = 0f;
+                            int recordedIndex = 0;
+                            
+                            foreach (var note in referenceEntry.singingNotes)
+                            {
+                                // 歌詞がある音（key != -1）のタイミングで参加者録音を再生
+                                if (note.key != -1 && !string.IsNullOrEmpty(note.lyric) && recordedIndex < recordedClips.Count)
+                                {
+                                    float noteStartTime = currentTime;
+                                    float noteDuration = note.frame_length * frameToSeconds;
+                                    
+                                    // このタイミングで参加者録音を再生
+                                    if (recordedIndex < participantAudioSources.Count)
+                                    {
+                                        var participantClip = recordedClips[recordedIndex];
+                                        if (participantClip != null)
+                                        {
+                                            StartCoroutine(PlayAtTime(participantAudioSources[recordedIndex], participantClip, noteStartTime));
+                                            if (enableDebugLog)
+                                            {
+                                                Debug.Log($"[ScenarioRunner] 参加者音声 {recordedIndex + 1} を {noteStartTime:F2}秒後に再生開始（{note.lyric}のタイミング）");
+                                            }
+                                        }
+                                        recordedIndex++;
+                                    }
+                                }
+                                
+                                currentTime += note.frame_length * frameToSeconds;
+                            }
+                            
+                            // お手本音声の再生が終わるまで待機
+                            yield return new WaitForSeconds(referenceClip.length);
+                            
+                            // 追加したAudioSourceをクリーンアップ
+                            foreach (var source in participantAudioSources)
+                            {
+                                if (source != null && source.gameObject != null)
+                                {
+                                    Destroy(source.gameObject);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // singingNotesがない場合は従来通り順番に再生
+                            if (enableDebugLog)
+                            {
+                                Debug.Log("[ScenarioRunner] お手本音声を再生します。");
+                            }
+                            audioSource.clip = referenceClip;
+                            audioSource.Play();
+                            yield return new WaitForSeconds(referenceClip.length + 0.1f);
+                            
+                            if (enableDebugLog)
+                            {
+                                Debug.Log($"[ScenarioRunner] 参加者{recordedClips.Count}音を順番に再生します。");
+                            }
+                            
+                            for (int i = 0; i < recordedClips.Count; i++)
+                            {
+                                var recordedClip = recordedClips[i];
+                                if (recordedClip != null)
+                                {
+                                    if (enableDebugLog)
+                                    {
+                                        Debug.Log($"[ScenarioRunner] 参加者音声 {i + 1}/{recordedClips.Count} を再生します。");
+                                    }
+                                    audioSource.clip = recordedClip;
+                                    audioSource.Play();
+                                    yield return new WaitForSeconds(recordedClip.length + 0.1f);
+                                }
+                            }
+                        }
+                    }
+                    else if (referenceClip != null && audioSource != null)
+                    {
+                        // 参加者録音がない場合はお手本音声のみ再生
                         if (enableDebugLog)
                         {
-                            int recordingCount = participantRecorder.RecordedClips.Count;
-                            string mixInfo = referenceClip != null 
-                                ? $"（参加者{recordingCount}音 + お手本）" 
-                                : $"（参加者{recordingCount}音）";
-                            Debug.Log($"[ScenarioRunner] 録音ミックスを再生します{mixInfo}。");
+                            Debug.Log("[ScenarioRunner] お手本音声を再生します。");
                         }
-                        audioSource.clip = mixClip;
+                        audioSource.clip = referenceClip;
                         audioSource.Play();
-                        yield return new WaitForSeconds(mixClip.length);
+                        yield return new WaitForSeconds(referenceClip.length);
                     }
                     else if (enableDebugLog)
                     {
-                        Debug.LogWarning("[ScenarioRunner] 再生できるミックスがありません。");
+                        Debug.LogWarning("[ScenarioRunner] 再生できる音声がありません。");
                     }
                 }
 
@@ -300,6 +405,23 @@ namespace Encounter.Scenario
                 Debug.Log("[ScenarioRunner] シナリオ再生完了");
             }
             _isRunning = false; // 実行完了
+        }
+
+        /// <summary>
+        /// 指定した時間後にAudioClipを再生するコルーチン
+        /// </summary>
+        private IEnumerator PlayAtTime(AudioSource source, AudioClip clip, float delayTime)
+        {
+            if (delayTime > 0f)
+            {
+                yield return new WaitForSeconds(delayTime);
+            }
+            
+            if (source != null && clip != null)
+            {
+                source.clip = clip;
+                source.Play();
+            }
         }
     }
 }

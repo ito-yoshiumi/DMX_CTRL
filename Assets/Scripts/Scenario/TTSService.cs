@@ -395,10 +395,25 @@ namespace Encounter.Scenario
         {
             if (singingNotes == null || singingNotes.Length == 0)
             {
+                if (enableDebugLog)
+                {
+                    Debug.LogWarning("[TTSService] GetCachedSingingClip: singingNotesがnullまたは空です");
+                }
                 return null;
             }
             string cacheKey = GetSingingCacheKey(singingNotes);
-            _cache.TryGetValue(cacheKey, out var clip);
+            bool found = _cache.TryGetValue(cacheKey, out var clip);
+            if (enableDebugLog)
+            {
+                if (found)
+                {
+                    Debug.Log($"[TTSService] GetCachedSingingClip: キャッシュから取得成功 (キー: {cacheKey})");
+                }
+                else
+                {
+                    Debug.LogWarning($"[TTSService] GetCachedSingingClip: キャッシュに存在しません (キー: {cacheKey}, キャッシュ数: {_cache.Count})");
+                }
+            }
             return clip;
         }
 

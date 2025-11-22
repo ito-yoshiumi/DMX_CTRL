@@ -84,26 +84,30 @@ namespace Encounter.DMX
             {
                 if (_localBindAddress == null)
                 {
-                    if (logSelection) Debug.LogWarning("[ArtNetClient] ローカルIP自動選択失敗。未バインドで送信します。");
+                    Debug.LogWarning("[ArtNetClient] ローカルIP自動選択失敗。未バインドで送信します。");
                     _udp = new UdpClient(AddressFamily.InterNetwork);
                 }
                 else
                 {
                     var localEP = new IPEndPoint(_localBindAddress, 0);
                     _udp = new UdpClient(localEP);
-                    if (logSelection) Debug.Log($"[ArtNetClient] Bind local {_localBindAddress}");
+                    Debug.Log($"[ArtNetClient] Bind local {_localBindAddress}");
                 }
 
                 _udp.EnableBroadcast = true;
                 _udp.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true);
                 _udp.Connect(_remoteEP);
-                Debug.Log($"[ArtNetClient] 接続: {targetIp}:{targetPort}");
+                Debug.Log($"[ArtNetClient] 接続成功: {targetIp}:{targetPort}, Net={net}, Subnet={subnet}, Universe={universe}, LocalIP={_localBindAddress}");
             }
             catch (Exception e)
             {
-                Debug.LogError($"[ArtNetClient] ソケット初期化エラー: {e.Message}");
+                Debug.LogError($"[ArtNetClient] ソケット初期化エラー: {e.Message}\nStackTrace: {e.StackTrace}");
             }
         }
+
+        private int _sendCount = 0;
+        private float _lastLogTime = 0f;
+        private const float LOG_INTERVAL = 5f; // 5秒ごとにログ出力
 
         public void SendDmx(byte[] dmx512)
         {
@@ -111,6 +115,14 @@ namespace Encounter.DMX
             {
                 Debug.LogError("[ArtNetClient] UDP未初期化です。");
                 return;
+            }
+            
+            _sendCount++;
+            float currentTime = Time.realtimeSinceStartup;
+            if (currentTime - _lastLogTime > LOG_INTERVAL)
+            {
+                Debug.Log($"[ArtNetClient] DMX送信中... (送信回数: {_sendCount}, Net={net}, Subnet={subnet}, Universe={universe})");
+                _lastLogTime = currentTime;
             }
 
             int length = Mathf.Clamp(dmx512?.Length ?? 512, 1, 512);
