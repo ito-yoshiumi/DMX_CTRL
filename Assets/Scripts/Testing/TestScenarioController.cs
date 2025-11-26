@@ -61,15 +61,6 @@ namespace Encounter.Testing
             }
         }
 
-        void OnGUI()
-        {
-            if (scenarioRunner == null) return;
-
-            GUILayout.BeginArea(new Rect(10, 10, 300, 150));
-            GUILayout.Box("シナリオテストコントロール");
-            GUILayout.Label($"押すキー: {startKey} = 開始/停止, {resetKey} = リセット");
-            GUILayout.EndArea();
-        }
     }
 }
 

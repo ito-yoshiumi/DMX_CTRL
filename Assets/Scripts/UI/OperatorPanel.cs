@@ -11,7 +11,7 @@ namespace Encounter.UI
 
         [Header("UI Settings")]
         [Tooltip("パネルの位置")]
-        public Vector2 panelPosition = new Vector2(320, 10);
+        public Vector2 panelPosition = new Vector2(10, 10);
         
         [Tooltip("パネルのサイズ")]
         public Vector2 panelSize = new Vector2(300, 200);
@@ -30,12 +30,12 @@ namespace Encounter.UI
             GUILayout.BeginArea(new Rect(panelPosition.x, panelPosition.y, panelSize.x, panelSize.y), GUI.skin.box);
             GUILayout.Label("Operator Panel");
             
-            if (GUILayout.Button("Run Scenario"))
+            if (GUILayout.Button("Run Scenario (Space)"))
             {
                 runner?.RunAll();
             }
             
-            if (GUILayout.Button("Stop Scenario"))
+            if (GUILayout.Button("Stop Scenario (R)"))
             {
                 runner?.Stop();
             }
