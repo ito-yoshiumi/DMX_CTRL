@@ -13,7 +13,7 @@ namespace Encounter.UI
 
         [Header("Display Settings")]
         [Tooltip("表示位置（左上からのオフセット）")]
-        public Vector2 position = new Vector2(10, 180);
+        public Vector2 position = new Vector2(320, 220);
         
         [Tooltip("表示サイズ")]
         public Vector2 size = new Vector2(300, 100);
