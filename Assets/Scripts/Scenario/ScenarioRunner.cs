@@ -278,7 +278,13 @@ namespace Encounter.Scenario
                     if (referenceClip != null && recordedClips != null && recordedClips.Count > 0 && audioSource != null)
                     {
                         // 参照エントリからsingingNotesを取得してタイミングを計算
-                        var referenceEntry = _scenario.entries.Find(entry => entry.id == e.mixReferenceEntryId);
+                        // mixReferenceEntryIdが指定されている場合のみ検索
+                        ScenarioEntry referenceEntry = null;
+                        if (!string.IsNullOrEmpty(e.mixReferenceEntryId))
+                        {
+                            referenceEntry = _scenario.entries.Find(entry => entry.id == e.mixReferenceEntryId);
+                        }
+                        
                         if (referenceEntry != null && referenceEntry.singingNotes != null && referenceEntry.singingNotes.Length > 0)
                         {
                             // お手本音声を再生開始
@@ -298,6 +304,7 @@ namespace Encounter.Scenario
                                 audioObj.transform.SetParent(transform);
                                 AudioSource participantSource = audioObj.AddComponent<AudioSource>();
                                 participantSource.playOnAwake = false;
+                                participantSource.volume = audioSource.volume; // メインAudioSourceと同じ音量を設定
                                 participantAudioSources.Add(participantSource);
                             }
                             

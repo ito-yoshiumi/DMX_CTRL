@@ -1385,7 +1385,7 @@ MonoBehaviour:
   runner: {fileID: 4000000004}
   audioInputManager: {fileID: 3000000006}
   panelPosition: {x: 10, y: 10}
-  panelSize: {x: 300, y: 200}
+  panelSize: {x: 300, y: 280}
 --- !u!1 &10000000001
 GameObject:
   m_ObjectHideFlags: 0
@@ -1431,7 +1431,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   audioInputManager: {fileID: 3000000006}
-  position: {x: 10, y: 220}
+  position: {x: 10, y: 300}
   size: {x: 300, y: 100}
   barWidth: 20
   barSpacing: 5

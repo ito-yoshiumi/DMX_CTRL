@@ -14,13 +14,23 @@ namespace Encounter.UI
         public Vector2 panelPosition = new Vector2(10, 10);
         
         [Tooltip("パネルのサイズ")]
-        public Vector2 panelSize = new Vector2(300, 200);
+        public Vector2 panelSize = new Vector2(300, 280);
+        
+        [Tooltip("音量（0-1）")]
+        [Range(0f, 1f)]
+        public float volume = 1f;
 
         void Start()
         {
             if (audioInputManager == null)
             {
                 audioInputManager = FindFirstObjectByType<AudioInputManager>();
+            }
+            
+            // ScenarioRunnerのAudioSourceの音量を初期化
+            if (runner != null && runner.audioSource != null)
+            {
+                runner.audioSource.volume = volume;
             }
         }
 
@@ -39,6 +49,23 @@ namespace Encounter.UI
             {
                 runner?.Stop();
             }
+            
+            GUILayout.Space(10);
+            
+            // 音量調整
+            GUILayout.Label("Volume", GUI.skin.label);
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"Volume: {volume:F2}", GUILayout.Width(150));
+            float newVolume = GUILayout.HorizontalSlider(volume, 0f, 1f, GUILayout.Width(100));
+            if (Mathf.Abs(newVolume - volume) > 0.001f)
+            {
+                volume = newVolume;
+                if (runner != null && runner.audioSource != null)
+                {
+                    runner.audioSource.volume = volume;
+                }
+            }
+            GUILayout.EndHorizontal();
             
             GUILayout.Space(10);
             
