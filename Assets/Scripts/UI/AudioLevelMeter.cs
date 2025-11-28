@@ -98,11 +98,12 @@ namespace Encounter.UI
             GUI.DrawTexture(thresholdRect, Texture2D.whiteTexture);
             GUI.color = Color.white;
 
-            // 数値表示
-            float labelX = barX + barWidth + barSpacing;
-            GUI.Label(new Rect(labelX, position.y + 10, 200, 20), $"RMS: {_smoothedRms:F3}");
-            GUI.Label(new Rect(labelX, position.y + 30, 200, 20), $"Threshold: {threshold:F3}");
-            GUI.Label(new Rect(labelX, position.y + 50, 200, 20), $"Status: {(_smoothedRms >= threshold ? "VOICE" : "SILENT")}");
+            // 数値表示（タイトルとの間に隙間を確保）
+            float labelX = barX + barWidth + barSpacing + 10f; // バーとラベルの間に追加のマージンを設定
+            float labelStartY = position.y + 25f; // タイトルとの間に隙間を確保
+            GUI.Label(new Rect(labelX, labelStartY, 200, 20), $"RMS: {_smoothedRms:F3}");
+            GUI.Label(new Rect(labelX, labelStartY + 20, 200, 20), $"Threshold: {threshold:F3}");
+            GUI.Label(new Rect(labelX, labelStartY + 40, 200, 20), $"Status: {(_smoothedRms >= threshold ? "VOICE" : "SILENT")}");
         }
     }
 }
