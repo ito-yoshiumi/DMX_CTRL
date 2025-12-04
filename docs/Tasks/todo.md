@@ -10,10 +10,13 @@
 - [x] SafetyManager: 非常停止（出力ゼロ/Apply停止）
 
 ## P1（展示向け）
-- [ ] VOICEVOX/COEIROINK TTS: 起動時キャッシュ→AudioClip 化
-- [ ] 参加者5音の録音＆ミックス再生
-- [ ] OperatorPanel: 進行/スキップ/巻き戻し/音量/UI
-- [ ] ログ保存（JSON/CSV）
+- [x] VOICEVOX/COEIROINK TTS: 起動時キャッシュ→AudioClip 化
+- [x] 参加者5音の録音＆ミックス再生
+- [x] OperatorPanel: 進行/スキップ/巻き戻し/音量/UI
+- [x] ログ保存（JSON/CSV）
+- [x] 音声検出による自動録音開始（発声タイミングをトリガーに）
+- [x] 音声検出閾値の設定UI
+- [x] 音声入力レベルのリアルタイム表示UI
 
 ## P2（拡張）
 - [ ] YIN ピッチ推定の最適化（低レイテンシ）
