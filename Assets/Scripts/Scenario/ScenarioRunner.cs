@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Encounter.DMX;
 using Encounter.Audio;
+using Encounter.Utils;
 
 namespace Encounter.Scenario
 {
@@ -87,6 +88,7 @@ namespace Encounter.Scenario
                 Debug.Log($"[ScenarioRunner] 初期化完了。RunAll()を呼び出してシナリオを開始してください。 (経過時間: {Time.time:F2}秒)");
             }
             // 自動再生しない。外部から RunAll() を叩く。
+            OperationLogger.Instance?.Log("Scenario", "Initialized", $"Resource: {scenarioResource}");
         }
 
         public void RunAll()
@@ -110,6 +112,7 @@ namespace Encounter.Scenario
             {
                 Debug.Log("[ScenarioRunner] シナリオ開始");
             }
+            OperationLogger.Instance?.Log("Scenario", "Started");
         }
 
         public void Stop()
@@ -133,12 +136,14 @@ namespace Encounter.Scenario
             {
                 Debug.Log("[ScenarioRunner] シナリオ停止");
             }
+            OperationLogger.Instance?.Log("Scenario", "Stopped");
         }
 
         private IEnumerator CoRun()
         {
             foreach (var e in _scenario.entries)
             {
+                OperationLogger.Instance?.Log("Scenario", "ProcessEntry", $"ID:{e.id}, Type:{e.type}, Text:{e.text}");
                 AudioClip clip = null;
 
                 if (e.type == "wav" && !string.IsNullOrEmpty(e.path))
@@ -185,6 +190,7 @@ namespace Encounter.Scenario
                     
                     audioSource.clip = clip;
                     audioSource.Play();
+                    OperationLogger.Instance?.Log("Scenario", "AudioPlay", $"Clip:{clip.name}, Duration:{clip.length:F2}s");
                     clipDuration = clip.length;
                     
                     if (enableDebugLog)
@@ -215,7 +221,9 @@ namespace Encounter.Scenario
                         {
                             Debug.Log($"[ScenarioRunner] 参加者録音開始: {e.recordSeconds}秒");
                         }
+                        OperationLogger.Instance?.Log("Scenario", "RecordStart", $"Duration:{e.recordSeconds}s");
                         yield return participantRecorder.RecordAsync(e.recordSeconds);
+                        OperationLogger.Instance?.Log("Scenario", "RecordEnd");
                     }
                     else
                     {
@@ -411,6 +419,7 @@ namespace Encounter.Scenario
             {
                 Debug.Log("[ScenarioRunner] シナリオ再生完了");
             }
+            OperationLogger.Instance?.Log("Scenario", "Completed");
             _isRunning = false; // 実行完了
         }
 

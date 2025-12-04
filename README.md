@@ -269,7 +269,7 @@ docs/
 - [x] VOICEVOX/COEIROINK TTS: 起動時キャッシュ→AudioClip 化
 - [x] 参加者5音の録音＆ミックス再生
 - [x] OperatorPanel: 進行/スキップ/巻き戻し/音量/UI
-- [ ] ログ保存（JSON/CSV）
+- [x] ログ保存（JSON/CSV）
 - [ ] 音声検出による自動録音開始（発声タイミングをトリガーに）
 - [ ] 音声検出閾値の設定UI
 - [ ] 音声入力レベルのリアルタイム表示UI

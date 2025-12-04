@@ -1,6 +1,7 @@
 using UnityEngine;
 using System;
 using System.Collections;
+using Encounter.Utils;
 
 namespace Encounter.Audio
 {
@@ -160,6 +161,7 @@ namespace Encounter.Audio
                 {
                     Debug.Log($"[AudioInputManager] マイク開始: {_currentMicName} (サンプルレート: {sampleRate}Hz)");
                 }
+                OperationLogger.Instance?.Log("Audio", "MicStarted", $"Device:{_currentMicName}, Rate:{sampleRate}");
             }
             catch (Exception e)
             {
@@ -176,6 +178,7 @@ namespace Encounter.Audio
                 {
                     Debug.Log($"[AudioInputManager] マイク停止: {_currentMicName}");
                 }
+                OperationLogger.Instance?.Log("Audio", "MicStopped", $"Device:{_currentMicName}");
             }
             CurrentClip = null;
         }
@@ -249,6 +252,7 @@ namespace Encounter.Audio
                         {
                             Debug.Log($"[AudioInputManager] 音声検出開始 (RMS: {rms:F3}, 閾値: {voiceDetectionThreshold:F3})");
                         }
+                        OperationLogger.Instance?.Log("Audio", "VoiceDetected", $"RMS:{rms:F3}");
                     }
                 }
                 else
@@ -280,6 +284,7 @@ namespace Encounter.Audio
                         {
                             Debug.Log($"[AudioInputManager] 音声検出終了 (無音継続時間: {voiceEndSilenceDuration:F2}秒)");
                         }
+                        OperationLogger.Instance?.Log("Audio", "VoiceEnded", $"Duration:{currentTime - _voiceStartTime:F2}s");
                     }
                 }
                 else
@@ -316,6 +321,8 @@ namespace Encounter.Audio
             }
 
             _isRecordingSegment = true;
+            
+            OperationLogger.Instance?.Log("Audio", "RecordSegmentStart", $"Duration:{durationSeconds}s");
 
             StopMicrophone();
             yield return null;
@@ -383,6 +390,7 @@ namespace Encounter.Audio
 
             StartMicrophone();
             _isRecordingSegment = false;
+            OperationLogger.Instance?.Log("Audio", "RecordSegmentEnd", "Success");
             onCompleted?.Invoke(clip);
         }
     }
