@@ -38,6 +38,8 @@ namespace Encounter.Scenario
         public float waitAfter;   // 再生後に待つ秒数(任意)
         public bool record;       // 録音するか
         public float recordSeconds = 0f;
+        public bool waitForVoiceTrigger; // 音声検出を待ってから録音開始するか
+        public float voiceTriggerTimeout = 10f; // 音声検出待ちのタイムアウト（秒）
         public bool playRecordedMix; // 録音済み音声を再生するか
         public string mixReferenceClip; // ミックス時に重ねる参照クリップ(Resources)
         public string mixReferenceEntryId; // ミックス時に重ねる参照エントリID（TTS/WAV）

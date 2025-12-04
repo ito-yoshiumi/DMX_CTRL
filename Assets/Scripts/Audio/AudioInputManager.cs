@@ -42,6 +42,8 @@ namespace Encounter.Audio
         public event Action OnVoiceDetected;        // 音声検出開始
         public event Action OnVoiceEnded;           // 音声検出終了
         
+        public bool IsVoiceDetected => _isVoiceDetected; // 現在音声検出中かどうか
+
         public float CurrentRms { get; private set; }  // 現在のRMS値（0-1）
 
         public AudioClip CurrentClip { get; private set; }

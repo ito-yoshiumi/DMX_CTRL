@@ -219,10 +219,20 @@ namespace Encounter.Scenario
                     {
                         if (enableDebugLog)
                         {
-                            Debug.Log($"[ScenarioRunner] 参加者録音開始: {e.recordSeconds}秒");
+                            Debug.Log($"[ScenarioRunner] 参加者録音処理開始: {e.recordSeconds}秒");
                         }
                         OperationLogger.Instance?.Log("Scenario", "RecordStart", $"Duration:{e.recordSeconds}s");
-                        yield return participantRecorder.RecordAsync(e.recordSeconds);
+                        
+                        if (e.waitForVoiceTrigger)
+                        {
+                            float timeout = e.voiceTriggerTimeout > 0f ? e.voiceTriggerTimeout : 10f;
+                            yield return participantRecorder.RecordWithTriggerAsync(e.recordSeconds, timeout);
+                        }
+                        else
+                        {
+                            yield return participantRecorder.RecordAsync(e.recordSeconds);
+                        }
+                        
                         OperationLogger.Instance?.Log("Scenario", "RecordEnd");
                     }
                     else

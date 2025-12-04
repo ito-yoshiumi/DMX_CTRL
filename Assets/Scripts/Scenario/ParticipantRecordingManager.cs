@@ -168,6 +168,55 @@ namespace Encounter.Scenario
             }
         }
 
+        public IEnumerator RecordWithTriggerAsync(float durationSeconds, float timeoutSeconds)
+        {
+            if (audioInputManager == null)
+            {
+                Debug.LogWarning("[ParticipantRecordingManager] AudioInputManager が設定されていません。");
+                yield break;
+            }
+
+            if (enableDebugLog)
+            {
+                Debug.Log($"[ParticipantRecordingManager] 音声検出待機中... (タイムアウト: {timeoutSeconds:F1}秒)");
+            }
+
+            bool triggered = false;
+            
+            // すでに音声検出中の場合は即座に開始
+            if (audioInputManager.IsVoiceDetected)
+            {
+                triggered = true;
+                if (enableDebugLog) Debug.Log("[ParticipantRecordingManager] 既に音声を検出しています。即座に録音を開始します。");
+            }
+            else
+            {
+                // イベント待ち
+                Action handler = () => triggered = true;
+                audioInputManager.OnVoiceDetected += handler;
+                
+                float startTime = Time.time;
+                while (!triggered && (Time.time - startTime) < timeoutSeconds)
+                {
+                    yield return null;
+                }
+                
+                audioInputManager.OnVoiceDetected -= handler;
+            }
+
+            if (!triggered)
+            {
+                if (enableDebugLog) Debug.LogWarning("[ParticipantRecordingManager] 音声検出タイムアウト。録音を開始します。");
+            }
+            else
+            {
+                 if (enableDebugLog) Debug.Log("[ParticipantRecordingManager] 音声を検出しました。録音を開始します。");
+            }
+
+            // 録音実行
+            yield return RecordAsync(durationSeconds);
+        }
+
         public AudioClip BuildMixClip(AudioClip referenceClip = null)
         {
             List<float[]> monoSources = new();
