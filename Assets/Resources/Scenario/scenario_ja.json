@@ -33,21 +33,26 @@
       "id": "say_ah",
       "type": "tts",
       "text": "マイクに『わー』って言ってみて",
-      "waitAfter": 0.2
+      "waitAfter": 0.2,
+      "record": true,
+      "recordSeconds": 1.5,
+      "waitForVoiceTrigger": true
     },
     {
       "id": "sing_scale",
       "type": "tts",
       "text": "すばらしい！ドレミファソってうたってみて",
-      "waitAfter": 0.2
+      "waitAfter": 0.5
     },
     {
       "id": "imitate_1",
       "type": "tts",
-      "text": "まずはいちおんめのおと。さん、にー、いち",
+      "text": "まずは、いちおんめのおと。さん、にー、いち",
       "record": true,
       "recordSeconds": 2.0,
-      "waitAfter": 0.2
+      "waitAfter": 0.2,
+      "waitForVoiceTrigger": true
+
     },
     {
       "id": "imitate_2",
@@ -55,7 +60,8 @@
       "text": "におんめ。さん、にー、いち",
       "record": true,
       "recordSeconds": 2.0,
-      "waitAfter": 0.2
+      "waitAfter": 0.2,
+      "waitForVoiceTrigger": true
     },
     {
       "id": "imitate_3",
@@ -63,7 +69,8 @@
       "text": "さんおんめ。さん、にー、いち",
       "record": true,
       "recordSeconds": 2.0,
-      "waitAfter": 0.2
+      "waitAfter": 0.2,
+      "waitForVoiceTrigger": true
     },
     {
       "id": "imitate_4",
@@ -71,7 +78,8 @@
       "text": "よんおんめ。さん、にー、いち",
       "record": true,
       "recordSeconds": 2.0,
-      "waitAfter": 0.2
+      "waitAfter": 0.2,
+      "waitForVoiceTrigger": true
     },
     {
       "id": "imitate_5",
@@ -79,7 +87,8 @@
       "text": "ごおんめ。さん、にー、いち",
       "record": true,
       "recordSeconds": 2.0,
-      "waitAfter": 0.2
+      "waitAfter": 0.2,
+      "waitForVoiceTrigger": true
     },
     {
       "id": "finale",
