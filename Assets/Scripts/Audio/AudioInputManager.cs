@@ -33,6 +33,15 @@ namespace Encounter.Audio
         [Range(0f, 2f)]
         public float voiceEndSilenceDuration = 0.3f;
 
+        public enum PitchEstimationMode
+        {
+            ACF, // 従来の自己相関
+            YIN  // YINアルゴリズム
+        }
+        
+        [Header("Pitch Estimation")]
+        public PitchEstimationMode estimationMode = PitchEstimationMode.YIN;
+
         [Header("Debug")]
         [Tooltip("デバッグログを表示するかどうか")]
         public bool enableDebugLog = true;
@@ -45,6 +54,7 @@ namespace Encounter.Audio
         public bool IsVoiceDetected => _isVoiceDetected; // 現在音声検出中かどうか
 
         public float CurrentRms { get; private set; }  // 現在のRMS値（0-1）
+        public float LastDetectedPitch { get; private set; } // 最後に検出されたピッチ(Hz)
 
         public AudioClip CurrentClip { get; private set; }
 
@@ -53,6 +63,7 @@ namespace Encounter.Audio
         private float _lastAnalysisTime;
         private RMSMeter _rmsMeter;
         private PitchEstimator _pitchEstimator;
+        private YinPitchEstimator _yinPitchEstimator;
         private bool _isRecordingSegment;
         
         // 音声検出用の状態
@@ -75,6 +86,9 @@ namespace Encounter.Audio
             {
                 _pitchEstimator = gameObject.AddComponent<PitchEstimator>();
             }
+
+            // YIN初期化
+            _yinPitchEstimator = new YinPitchEstimator(sampleRate, sampleLength);
         }
 
         void Start()
@@ -205,7 +219,22 @@ namespace Encounter.Audio
                 OnRms?.Invoke(rms);
 
                 // ピッチ推定
-                float pitchHz = _pitchEstimator.EstimatePitchHz(_samples, sampleRate);
+                float pitchHz = 0f;
+                if (estimationMode == PitchEstimationMode.YIN)
+                {
+                    if (_yinPitchEstimator != null)
+                    {
+                        pitchHz = _yinPitchEstimator.GetPitch(_samples);
+                    }
+                }
+                else
+                {
+                    if (_pitchEstimator != null)
+                    {
+                        pitchHz = _pitchEstimator.EstimatePitchHz(_samples, sampleRate);
+                    }
+                }
+                LastDetectedPitch = pitchHz;
                 
                 // 音声検出処理
                 DetectVoice(rms);

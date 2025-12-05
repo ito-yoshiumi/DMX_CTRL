@@ -141,12 +141,18 @@ namespace Encounter.Scenario
 
         private IEnumerator CoRun()
         {
-            foreach (var e in _scenario.entries)
+            for (int i = 0; i < _scenario.entries.Count; i++)
             {
-                OperationLogger.Instance?.Log("Scenario", "ProcessEntry", $"ID:{e.id}, Type:{e.type}, Text:{e.text}");
-                AudioClip clip = null;
+                var e = _scenario.entries[i];
+                bool retryEntry = false;
 
-                if (e.type == "wav" && !string.IsNullOrEmpty(e.path))
+                do
+                {
+                    retryEntry = false;
+                    OperationLogger.Instance?.Log("Scenario", "ProcessEntry", $"ID:{e.id}, Type:{e.type}, Text:{e.text}");
+                    AudioClip clip = null;
+
+                    if (e.type == "wav" && !string.IsNullOrEmpty(e.path))
                 {
                     // ResourcesからWAVファイルをロード
                     clip = Resources.Load<AudioClip>(e.path);
@@ -226,7 +232,22 @@ namespace Encounter.Scenario
                         if (e.waitForVoiceTrigger)
                         {
                             float timeout = e.voiceTriggerTimeout > 0f ? e.voiceTriggerTimeout : 10f;
-                            yield return participantRecorder.RecordWithTriggerAsync(e.recordSeconds, timeout);
+                            bool isSuccess = false;
+                            
+                            yield return participantRecorder.RecordWithTriggerAsync(e.recordSeconds, timeout, (success) => {
+                                isSuccess = success;
+                            });
+                            
+                            if (!isSuccess)
+                            {
+                                if (enableDebugLog)
+                                {
+                                    Debug.Log($"[ScenarioRunner] 音声検出タイムアウト。エントリ '{e.id}' をリトライします。");
+                                }
+                                retryEntry = true;
+                                yield return new WaitForSeconds(0.5f);
+                                continue;
+                            }
                         }
                         else
                         {
@@ -243,6 +264,8 @@ namespace Encounter.Scenario
                         }
                     }
                 }
+
+                if (retryEntry) continue;
 
                 if (e.playRecordedMix && participantRecorder != null)
                 {
@@ -316,9 +339,9 @@ namespace Encounter.Scenario
                             
                             // 追加のAudioSourceを作成（参加者録音用）
                             List<AudioSource> participantAudioSources = new List<AudioSource>();
-                            for (int i = 0; i < recordedClips.Count && i < 5; i++)
+                            for (int j = 0; j < recordedClips.Count && j < 5; j++)
                             {
-                                GameObject audioObj = new GameObject($"ParticipantAudioSource_{i}");
+                                GameObject audioObj = new GameObject($"ParticipantAudioSource_{j}");
                                 audioObj.transform.SetParent(transform);
                                 AudioSource participantSource = audioObj.AddComponent<AudioSource>();
                                 participantSource.playOnAwake = false;
@@ -386,14 +409,14 @@ namespace Encounter.Scenario
                                 Debug.Log($"[ScenarioRunner] 参加者{recordedClips.Count}音を順番に再生します。");
                             }
                             
-                            for (int i = 0; i < recordedClips.Count; i++)
+                            for (int j = 0; j < recordedClips.Count; j++)
                             {
-                                var recordedClip = recordedClips[i];
+                                var recordedClip = recordedClips[j];
                                 if (recordedClip != null)
                                 {
                                     if (enableDebugLog)
                                     {
-                                        Debug.Log($"[ScenarioRunner] 参加者音声 {i + 1}/{recordedClips.Count} を再生します。");
+                                        Debug.Log($"[ScenarioRunner] 参加者音声 {j + 1}/{recordedClips.Count} を再生します。");
                                     }
                                     audioSource.clip = recordedClip;
                                     audioSource.Play();
@@ -423,6 +446,8 @@ namespace Encounter.Scenario
                 {
                     yield return new WaitForSeconds(waitAfter);
                 }
+                
+                } while (retryEntry);
             }
 
             if (enableDebugLog)

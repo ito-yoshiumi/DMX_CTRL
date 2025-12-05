@@ -168,11 +168,12 @@ namespace Encounter.Scenario
             }
         }
 
-        public IEnumerator RecordWithTriggerAsync(float durationSeconds, float timeoutSeconds)
+        public IEnumerator RecordWithTriggerAsync(float durationSeconds, float timeoutSeconds, System.Action<bool> onResult = null)
         {
             if (audioInputManager == null)
             {
                 Debug.LogWarning("[ParticipantRecordingManager] AudioInputManager が設定されていません。");
+                onResult?.Invoke(false);
                 yield break;
             }
 
@@ -206,7 +207,9 @@ namespace Encounter.Scenario
 
             if (!triggered)
             {
-                if (enableDebugLog) Debug.LogWarning("[ParticipantRecordingManager] 音声検出タイムアウト。録音を開始します。");
+                if (enableDebugLog) Debug.LogWarning("[ParticipantRecordingManager] 音声検出タイムアウト。");
+                onResult?.Invoke(false);
+                yield break;
             }
             else
             {
@@ -215,6 +218,7 @@ namespace Encounter.Scenario
 
             // 録音実行
             yield return RecordAsync(durationSeconds);
+            onResult?.Invoke(true);
         }
 
         public AudioClip BuildMixClip(AudioClip referenceClip = null)

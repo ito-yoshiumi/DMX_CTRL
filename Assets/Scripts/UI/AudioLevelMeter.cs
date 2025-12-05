@@ -36,6 +36,9 @@ namespace Encounter.UI
         [Tooltip("バーの色（閾値以上）")]
         public Color barColorHigh = Color.red;
 
+        [Tooltip("表示の可視性")]
+        public bool isPanelVisible = true;
+
         private float _currentRms = 0f;
         private float _smoothedRms = 0f;
         private const float SMOOTH_FACTOR = 0.3f;
@@ -70,7 +73,7 @@ namespace Encounter.UI
 
         void OnGUI()
         {
-            if (audioInputManager == null) return;
+            if (audioInputManager == null || !isPanelVisible) return;
 
             // 背景ボックス
             Rect boxRect = new Rect(position.x, position.y, size.x, size.y);
