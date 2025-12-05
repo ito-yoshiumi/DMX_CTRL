@@ -419,7 +419,8 @@ namespace Encounter.Scenario
 
         private string GetCacheKey(string text, string[] pitchNotes, float speedScale = 1.0f, string labFilePath = null)
         {
-            List<string> keyParts = new List<string> { text };
+            // キャッシュキーに話者IDを含めることで、話者を変更した際に再生成されるようにする
+            List<string> keyParts = new List<string> { $"spd:{speakerId}", text };
             if (pitchNotes != null && pitchNotes.Length > 0)
             {
                 keyParts.Add($"pitch:{string.Join(",", pitchNotes)}");
@@ -1000,7 +1001,8 @@ namespace Encounter.Scenario
             {
                 return "singing:empty";
             }
-            List<string> noteStrings = new List<string>();
+            // キャッシュキーに歌唱用・ハミング用話者IDを含める
+            List<string> noteStrings = new List<string> { $"ids:{singingSpeakerId}-{hummingSpeakerId}" };
             foreach (var note in singingNotes)
             {
                 string keyStr = (note.key == -1) ? "null" : note.key.ToString();

@@ -1,27 +1,27 @@
 {
   "entries": [
     {
-      "id": "intro1",
-      "type": "tts",
-      "text": "こんにちは。キネティックライトの体験へようこそ",
-      "dmxCue": "Cues/intro_light",
-      "waitAfter": 0.3
-    },
-    {
-      "id": "greeting_signal",
+      "id": "melody_voicevox",
       "type": "singing",
-      "text": "ドレミファソ",
+      "text": "こんにちはー",
       "dmxCue": "Cues/5note_light",
-      "waitAfter": 0.3,
+      "waitAfter": 0.5,
       "singingNotes": [
         { "key": -1, "frame_length": 15, "lyric": "" },
-        { "key": 60, "frame_length": 45, "lyric": "ド" },
-        { "key": 62, "frame_length": 45, "lyric": "レ" },
-        { "key": 64, "frame_length": 45, "lyric": "ミ" },
-        { "key": 65, "frame_length": 45, "lyric": "ファ" },
-        { "key": 67, "frame_length": 45, "lyric": "ソ" },
+        { "key": 67, "frame_length": 48, "lyric": "こ" },
+        { "key": 63, "frame_length": 48, "lyric": "ん" },
+        { "key": 58, "frame_length": 48, "lyric": "に" },
+        { "key": 65, "frame_length": 48, "lyric": "ち" },
+        { "key": 70, "frame_length": 96, "lyric": "わ" },
         { "key": -1, "frame_length": 15, "lyric": "" }
       ]
+    },
+    {
+      "id": "intro1",
+      "type": "tts",
+      "text": "わたしはAI。あなたとおはなしして、なかよくなるためにきました。",
+      "dmxCue": "Cues/intro_light",
+      "waitAfter": 0.3
     },
     {
       "id": "ask_user",
@@ -41,50 +41,134 @@
     {
       "id": "sing_scale",
       "type": "tts",
-      "text": "すばらしい！ドレミファソってうたってみて",
+      "text": "すばらしい！それじゃあいっしょにうたってみよう",
       "waitAfter": 0.5
+    },
+    {
+      "id": "imitate_1_intro",
+      "type": "tts",
+      "text": "まずはいちおんめのおと。",
+      "waitAfter": 0.2
+    },
+    {
+      "id": "imitate_1_note",
+      "type": "singing",
+      "text": "こ",
+      "singingNotes": [
+        { "key": -1, "frame_length": 15, "lyric": "" },
+        { "key": 67, "frame_length": 90, "lyric": "こ" },
+        { "key": -1, "frame_length": 15, "lyric": "" }
+      ],
+      "waitAfter": 0.2
     },
     {
       "id": "imitate_1",
       "type": "tts",
-      "text": "まずは、いちおんめのおと。さん、にー、いち",
+      "text": "さん、にー、いち",
       "record": true,
       "recordSeconds": 2.0,
       "waitAfter": 0.2,
       "waitForVoiceTrigger": true
-
+    },
+    {
+      "id": "imitate_2_intro",
+      "type": "tts",
+      "text": "におんめ。",
+      "waitAfter": 0.2
+    },
+    {
+      "id": "imitate_2_note",
+      "type": "singing",
+      "text": "ん",
+      "singingNotes": [
+        { "key": -1, "frame_length": 15, "lyric": "" },
+        { "key": 63, "frame_length": 90, "lyric": "ん" },
+        { "key": -1, "frame_length": 15, "lyric": "" }
+      ],
+      "waitAfter": 0.2
     },
     {
       "id": "imitate_2",
       "type": "tts",
-      "text": "におんめ。さん、にー、いち",
+      "text": "さん、にー、いち",
       "record": true,
       "recordSeconds": 2.0,
       "waitAfter": 0.2,
       "waitForVoiceTrigger": true
+    },
+    {
+      "id": "imitate_3_intro",
+      "type": "tts",
+      "text": "さんおんめ。",
+      "waitAfter": 0.2
+    },
+    {
+      "id": "imitate_3_note",
+      "type": "singing",
+      "text": "に",
+      "singingNotes": [
+        { "key": -1, "frame_length": 15, "lyric": "" },
+        { "key": 58, "frame_length": 90, "lyric": "に" },
+        { "key": -1, "frame_length": 15, "lyric": "" }
+      ],
+      "waitAfter": 0.2
     },
     {
       "id": "imitate_3",
       "type": "tts",
-      "text": "さんおんめ。さん、にー、いち",
+      "text": "さん、にー、いち",
       "record": true,
       "recordSeconds": 2.0,
       "waitAfter": 0.2,
       "waitForVoiceTrigger": true
+    },
+    {
+      "id": "imitate_4_intro",
+      "type": "tts",
+      "text": "よんおんめ。",
+      "waitAfter": 0.2
+    },
+    {
+      "id": "imitate_4_note",
+      "type": "singing",
+      "text": "ち",
+      "singingNotes": [
+        { "key": -1, "frame_length": 15, "lyric": "" },
+        { "key": 65, "frame_length": 90, "lyric": "ち" },
+        { "key": -1, "frame_length": 15, "lyric": "" }
+      ],
+      "waitAfter": 0.2
     },
     {
       "id": "imitate_4",
       "type": "tts",
-      "text": "よんおんめ。さん、にー、いち",
+      "text": "さん、にー、いち",
       "record": true,
       "recordSeconds": 2.0,
       "waitAfter": 0.2,
       "waitForVoiceTrigger": true
     },
     {
+      "id": "imitate_5_intro",
+      "type": "tts",
+      "text": "ごおんめ。",
+      "waitAfter": 0.2
+    },
+    {
+      "id": "imitate_5_note",
+      "type": "singing",
+      "text": "わ",
+      "singingNotes": [
+        { "key": -1, "frame_length": 15, "lyric": "" },
+        { "key": 70, "frame_length": 90, "lyric": "わ" },
+        { "key": -1, "frame_length": 15, "lyric": "" }
+      ],
+      "waitAfter": 0.2
+    },
+    {
       "id": "imitate_5",
       "type": "tts",
-      "text": "ごおんめ。さん、にー、いち",
+      "text": "さん、にー、いち",
       "record": true,
       "recordSeconds": 2.0,
       "waitAfter": 0.2,
@@ -97,7 +181,25 @@
       "dmxCue": "Cues/5note_light",
       "waitAfter": 0.2,
       "playRecordedMix": true,
-      "mixReferenceEntryId": "greeting_signal"
+      "mixReferenceEntryId": "melody_voicevox"
+    },
+    {
+      "id": "timeout_1",
+      "type": "tts",
+      "text": "だれもいないのかな？もうすこしマイクの近くで大きい声でうたってみて。",
+      "waitAfter": 0.2
+    },
+    {
+      "id": "timeout_2",
+      "type": "tts",
+      "text": "あれ、誰もいないみたい。",
+      "waitAfter": 0.2
+    },
+    {
+      "id": "restart_message",
+      "type": "tts",
+      "text": "もういちど最初からはじめるね",
+      "waitAfter": 0.2
     }
   ]
 }

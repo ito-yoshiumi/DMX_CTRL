@@ -785,7 +785,7 @@ MonoBehaviour:
   voiceDetectionThreshold: 0.05
   voiceDetectionMinDuration: 0.1
   voiceEndSilenceDuration: 0.3
-  estimationMode: 0
+  estimationMode: 1
   enableDebugLog: 0
 --- !u!1 &4000000001
 GameObject:
@@ -1290,9 +1290,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   engineBaseUrl: http://127.0.0.1:50021
-  speakerId: 89
+  speakerId: 2
   singingSpeakerId: 6000
-  hummingSpeakerId: 3002
+  hummingSpeakerId: 3003
   connectionTimeout: 5
   enableDebugLog: 1
 --- !u!1 &8000000001
@@ -1385,9 +1385,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   runner: {fileID: 4000000004}
   audioInputManager: {fileID: 3000000006}
+  audioLevelMeter: {fileID: 0}
   panelPosition: {x: 10, y: 10}
   panelSize: {x: 300, y: 330}
   volume: 1
+  isPanelVisible: 1
+  showConsoleLog: 1
+  maxLogLines: 8
 --- !u!1 &10000000001
 GameObject:
   m_ObjectHideFlags: 0
@@ -1441,6 +1445,7 @@ MonoBehaviour:
   thresholdColor: {r: 1, g: 1, b: 0, a: 1}
   barColorLow: {r: 0, g: 1, b: 0, a: 1}
   barColorHigh: {r: 1, g: 0, b: 0, a: 1}
+  isPanelVisible: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

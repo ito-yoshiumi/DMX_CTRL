@@ -141,9 +141,18 @@ namespace Encounter.Scenario
 
         private IEnumerator CoRun()
         {
+            int voiceTriggerTimeoutCount = 0; // タイムアウト回数をカウント
+            
             for (int i = 0; i < _scenario.entries.Count; i++)
             {
                 var e = _scenario.entries[i];
+                
+                // システムメッセージ（timeout_やrestart_messageなど）はメインループではスキップする
+                if (e.id.StartsWith("timeout_") || e.id.StartsWith("restart_message"))
+                {
+                    continue;
+                }
+
                 bool retryEntry = false;
 
                 do
@@ -240,13 +249,124 @@ namespace Encounter.Scenario
                             
                             if (!isSuccess)
                             {
+                                voiceTriggerTimeoutCount++;
+                                
                                 if (enableDebugLog)
                                 {
-                                    Debug.Log($"[ScenarioRunner] 音声検出タイムアウト。エントリ '{e.id}' をリトライします。");
+                                    Debug.Log($"[ScenarioRunner] 音声検出タイムアウト ({voiceTriggerTimeoutCount}回目)。エントリ '{e.id}' をリトライします。");
                                 }
+                                
+                                // 2回タイムアウトしたらシナリオの最初から再開
+                                if (voiceTriggerTimeoutCount >= 2)
+                                {
+                                    if (enableDebugLog)
+                                    {
+                                        Debug.Log("[ScenarioRunner] 音声検出タイムアウトが2回発生しました。シナリオの最初から再開します。");
+                                    }
+                                    OperationLogger.Instance?.Log("Scenario", "RestartFromBeginning", "VoiceTriggerTimeout x2");
+                                    
+                                    // 2回目のタイムアウトメッセージを再生
+                                    if (ttsService != null && audioSource != null)
+                                    {
+                                        string timeoutMessage2 = "あれ、誰もいないみたい。";
+                                        // シナリオからメッセージを取得してキャッシュを利用
+                                        var timeoutEntry = _scenario.entries.Find(entry => entry.id == "timeout_2");
+                                        if (timeoutEntry != null && !string.IsNullOrEmpty(timeoutEntry.text))
+                                        {
+                                            timeoutMessage2 = timeoutEntry.text;
+                                        }
+
+                                        AudioClip timeoutClip2 = ttsService.GetCachedClip(timeoutMessage2);
+                                        
+                                        if (timeoutClip2 != null)
+                                        {
+                                            if (enableDebugLog)
+                                            {
+                                                Debug.Log($"[ScenarioRunner] タイムアウトメッセージ再生: \"{timeoutMessage2}\"");
+                                            }
+                                            audioSource.clip = timeoutClip2;
+                                            audioSource.Play();
+                                            yield return new WaitForSeconds(timeoutClip2.length + 0.3f);
+                                        }
+                                        else if (enableDebugLog)
+                                        {
+                                            Debug.LogWarning($"[ScenarioRunner] タイムアウトメッセージのクリップが取得できません: \"{timeoutMessage2}\"");
+                                        }
+                                        
+                                        // リスタートメッセージを再生
+                                        string restartMessage = "もういちど最初からはじめるね";
+                                        var restartEntry = _scenario.entries.Find(entry => entry.id == "restart_message");
+                                        if (restartEntry != null && !string.IsNullOrEmpty(restartEntry.text))
+                                        {
+                                            restartMessage = restartEntry.text;
+                                        }
+                                        
+                                        AudioClip restartClip = ttsService.GetCachedClip(restartMessage);
+                                        
+                                        if (restartClip != null)
+                                        {
+                                            if (enableDebugLog)
+                                            {
+                                                Debug.Log($"[ScenarioRunner] リスタートメッセージ再生: \"{restartMessage}\"");
+                                            }
+                                            audioSource.clip = restartClip;
+                                            audioSource.Play();
+                                            yield return new WaitForSeconds(restartClip.length + 0.3f);
+                                        }
+                                        else if (enableDebugLog)
+                                        {
+                                            Debug.LogWarning($"[ScenarioRunner] リスタートメッセージのクリップが取得できません: \"{restartMessage}\"");
+                                        }
+                                    }
+                                    
+                                    // タイムアウトカウンターをリセット
+                                    voiceTriggerTimeoutCount = 0;
+                                    
+                                    // 1拍（約1秒）待ってからシナリオの最初から再開
+                                    yield return new WaitForSeconds(1.0f);
+                                    
+                                    // シナリオの最初から再開
+                                    i = -1; // 次のループで i++ されるので -1 にする
+                                    break; // 現在のエントリのループを抜ける
+                                }
+                                
+                                // 1回目のタイムアウトメッセージを再生
+                                if (voiceTriggerTimeoutCount == 1 && ttsService != null && audioSource != null)
+                                {
+                                    string timeoutMessage1 = "だれもいないのかな？もうすこしマイクの近くで大きい声でうたってみて。";
+                                    // シナリオからメッセージを取得してキャッシュを利用
+                                    var timeoutEntry = _scenario.entries.Find(entry => entry.id == "timeout_1");
+                                    if (timeoutEntry != null && !string.IsNullOrEmpty(timeoutEntry.text))
+                                    {
+                                        timeoutMessage1 = timeoutEntry.text;
+                                    }
+
+                                    AudioClip timeoutClip1 = ttsService.GetCachedClip(timeoutMessage1);
+                                    
+                                    if (timeoutClip1 != null)
+                                    {
+                                        if (enableDebugLog)
+                                        {
+                                            Debug.Log($"[ScenarioRunner] タイムアウトメッセージ再生: \"{timeoutMessage1}\"");
+                                        }
+                                        audioSource.clip = timeoutClip1;
+                                        audioSource.Play();
+                                        yield return new WaitForSeconds(timeoutClip1.length + 0.3f);
+                                    }
+                                    else if (enableDebugLog)
+                                    {
+                                        Debug.LogWarning($"[ScenarioRunner] タイムアウトメッセージのクリップが取得できません: \"{timeoutMessage1}\"");
+                                    }
+                                }
+                                
                                 retryEntry = true;
                                 yield return new WaitForSeconds(0.5f);
                                 continue;
+                            }
+                            else
+                            {
+                                // 成功したらタイムアウトカウンターをリセット
+                                voiceTriggerTimeoutCount = 0;
                             }
                         }
                         else
@@ -452,10 +572,17 @@ namespace Encounter.Scenario
 
             if (enableDebugLog)
             {
-                Debug.Log("[ScenarioRunner] シナリオ再生完了");
+                Debug.Log("[ScenarioRunner] シナリオ再生完了。5秒後に再開します。");
             }
-            OperationLogger.Instance?.Log("Scenario", "Completed");
-            _isRunning = false; // 実行完了
+            OperationLogger.Instance?.Log("Scenario", "Completed", "Restarting in 5s");
+            
+            yield return new WaitForSeconds(5.0f);
+            
+            // 再帰呼び出しではなく、コルーチンを再開する形にする
+            // ただし、単純にStartCoroutineするとスタックオーバーフローの可能性があるため、
+            // ループ構造にするのが望ましいが、ここでは簡易的に自分自身を再度呼び出す形にする
+            // 現在のコルーチンは終了し、新しいコルーチンを開始する
+            StartCoroutine(CoRun());
         }
 
         /// <summary>
