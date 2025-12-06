@@ -706,12 +706,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   audioInputManager: {fileID: 3000000006}
-  squares:
-  - {fileID: 87752882}
-  - {fileID: 1041033025}
-  - {fileID: 1491431507}
-  - {fileID: 2000000002}
-  - {fileID: 2000000005}
   staffTopY: 3
   staffBottomY: 0
   squareSpacing: 1
@@ -1031,10 +1025,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   controller: {fileID: 5000000006}
+  audioInputManager: {fileID: 0}
   updateRate: 30
   minMidiNote: 58
   maxMidiNote: 72
   maxMoveSpeed: 50
+  ttsWaveFrequency: 0.5
+  ttsWaveHeightAmplitude: 30
+  ttsSilentAmplitudeMultiplier: 0.25
+  ttsWaveHeightCenter: 50
+  ttsColorSpeed: 0.3
+  ttsHeightLerpSpeed: 0.2
+  ttsVoiceThreshold: 0.02
   enableDebugLog: 1
 --- !u!114 &4000000016
 MonoBehaviour:
@@ -1306,11 +1308,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   engineBaseUrl: http://127.0.0.1:50021
-  speakerId: 2
+  speakerId: 3
   singingSpeakerId: 6000
   hummingSpeakerId: 3003
   connectionTimeout: 5
-  enableDebugLog: 1
+  enableDebugLog: 0
 --- !u!1 &8000000001
 GameObject:
   m_ObjectHideFlags: 0

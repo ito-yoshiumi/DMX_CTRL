@@ -9,6 +9,8 @@ namespace Encounter.Scenario
     {
         [Header("References")]
         public Encounter.DMX.KineticLightController controller;
+        [Tooltip("音声入力の音量に応じて振幅を調整するために使用（オプション）")]
+        public Encounter.Audio.AudioInputManager audioInputManager;
 
         [Header("Playback Settings")]
         [Tooltip("更新レート（fps）")]
@@ -24,14 +26,40 @@ namespace Encounter.Scenario
         [Range(10, 200)]
         public float maxMoveSpeed = 50f;
         
+        [Header("TTS Wave Motion Settings")]
+        [Tooltip("波の周波数（Hz）。大きいほど速く波打つ")]
+        [Range(0.05f, 2.0f)]
+        public float ttsWaveFrequency = 0.075f; // フィクスチャの物理的な動きに合わせてさらにゆっくりに
+        [Tooltip("高さの波の最大振幅（0-100の範囲、音声入力時）")]
+        [Range(10, 50)]
+        public float ttsWaveHeightAmplitude = 30f;
+        [Tooltip("無音時の振幅倍率（0-1の範囲、通常は0.25で4分の1）")]
+        [Range(0f, 1f)]
+        public float ttsSilentAmplitudeMultiplier = 0.25f; // 無音時は4分の1
+        [Tooltip("高さの中央値（0-100の範囲）")]
+        [Range(0, 100)]
+        public float ttsWaveHeightCenter = 50f;
+        [Tooltip("色の変化速度（色相の変化速度）")]
+        [Range(0.1f, 2.0f)]
+        public float ttsColorSpeed = 0.1f; // 色の変化もゆっくりに
+        [Tooltip("高さの補間速度（0-1の範囲、大きいほど速く追従）")]
+        [Range(0.1f, 1.0f)]
+        public float ttsHeightLerpSpeed = 0.15f; // 高さの変化をより滑らかに
+        [Tooltip("音声入力のRMS閾値（これ以下は無音とみなす）")]
+        [Range(0f, 0.1f)]
+        public float ttsVoiceThreshold = 0.02f; // 音声検出の閾値
+        
         [Header("Debug")]
         [Tooltip("デバッグログを表示するかどうか")]
         public bool enableDebugLog = true;
 
         private Coroutine _currentPlayback;
+        private Coroutine _currentTTSWaveMotion;
         private Dictionary<int, FixtureState> _currentStates = new Dictionary<int, FixtureState>();
         // 各フィクスチャの現在の高さを追跡（0-100の範囲、floatで滑らかな移動を実現）
         private Dictionary<int, float> _currentFixtureHeights = new Dictionary<int, float>();
+        // 各フィクスチャに対して実行中の移動コルーチンを追跡（レースコンディション防止）
+        private Dictionary<int, Coroutine> _activeMoveCoroutines = new Dictionary<int, Coroutine>();
 
         public void PlayCue(string resourcesPath)
         {
@@ -78,6 +106,7 @@ namespace Encounter.Scenario
                 StopCoroutine(_currentPlayback);
                 _currentPlayback = null;
             }
+            StopTTSWaveMotion();
             _currentStates.Clear();
             // 高さの追跡は保持（次の再生で使用するため）
         }
@@ -170,11 +199,13 @@ namespace Encounter.Scenario
         /// </summary>
         private IEnumerator MoveFixtureToHeight(int fixtureIndex, float targetHeight)
         {
+            // 現在の高さを取得（他のコルーチンが変更している可能性があるため、最新の値を取得）
             if (!_currentFixtureHeights.ContainsKey(fixtureIndex))
             {
                 _currentFixtureHeights[fixtureIndex] = 0f;
             }
             
+            // このコルーチン開始時点の高さを記録（移動中に他のコルーチンが変更する可能性があるため）
             float currentHeight = _currentFixtureHeights[fixtureIndex];
             float distance = Mathf.Abs(targetHeight - currentHeight);
             
@@ -193,8 +224,25 @@ namespace Encounter.Scenario
             }
             
             // 等速運動で目標位置まで移動
+            // 最初のフレームを待機して、コルーチン参照が確実に設定されるようにする
+            yield return null;
+            
             while (Mathf.Abs(_currentFixtureHeights[fixtureIndex] - targetHeight) > 0.1f)
             {
+                // このコルーチンがまだ有効かどうかを確認（StopCoroutineで停止された場合）
+                // この時点で、_activeMoveCoroutines[fixtureIndex]にはこのコルーチンの参照が設定されているはず
+                // ただし、StopCoroutineが呼ばれると、辞書から削除されるか、別のコルーチンに置き換えられる
+                // 直接比較はできないため、辞書にエントリが存在し、nullでないことを確認する
+                if (!_activeMoveCoroutines.ContainsKey(fixtureIndex) || _activeMoveCoroutines[fixtureIndex] == null)
+                {
+                    // このコルーチンが停止された（別のコルーチンに置き換えられた、または削除された）
+                    if (enableDebugLog)
+                    {
+                        Debug.Log($"[CuePlayer] MoveFixtureToHeight: Fixture {fixtureIndex}のコルーチンが停止されました（置き換えられました）。");
+                    }
+                    yield break;
+                }
+                
                 float deltaTime = Time.deltaTime;
                 if (deltaTime <= 0f) 
                 {
@@ -205,7 +253,7 @@ namespace Encounter.Scenario
                 // 1フレームで移動できる距離
                 float maxMoveDistance = maxMoveSpeed * deltaTime;
                 
-                // 目標位置までの距離
+                // 目標位置までの距離（最新の値を取得）
                 float remainingDistance = targetHeight - _currentFixtureHeights[fixtureIndex];
                 float remainingDistanceAbs = Mathf.Abs(remainingDistance);
                 
@@ -232,14 +280,17 @@ namespace Encounter.Scenario
                 yield return null;
             }
             
-            // 最終位置を確定
-            _currentFixtureHeights[fixtureIndex] = targetHeight;
-            controller.SetFixtureHeight(fixtureIndex, Mathf.RoundToInt(targetHeight));
-            controller.Apply();
-            
-            if (enableDebugLog)
+            // 最終位置を確定（このコルーチンがまだ有効な場合のみ）
+            if (_activeMoveCoroutines.ContainsKey(fixtureIndex) && _activeMoveCoroutines[fixtureIndex] != null)
             {
-                Debug.Log($"[CuePlayer] MoveFixtureToHeight 完了: Fixture {fixtureIndex}, Height: {targetHeight:F1}");
+                _currentFixtureHeights[fixtureIndex] = targetHeight;
+                controller.SetFixtureHeight(fixtureIndex, Mathf.RoundToInt(targetHeight));
+                controller.Apply();
+                
+                if (enableDebugLog)
+                {
+                    Debug.Log($"[CuePlayer] MoveFixtureToHeight 完了: Fixture {fixtureIndex}, Height: {targetHeight:F1}");
+                }
             }
         }
 
@@ -274,9 +325,11 @@ namespace Encounter.Scenario
                 yield break;
             }
 
-            // 全ての有効なノートを抽出して、各フィクスチャを対応する位置に移動
-            List<(int fixtureIndex, float targetHeight, SingingNote note)> noteAssignments = new List<(int, float, SingingNote)>();
+            // 全ての有効なノートを抽出
+            // 同じフィクスチャに複数のノートが割り当てられる場合、最後のノートの位置を使用（レースコンディション防止）
+            Dictionary<int, (float targetHeight, SingingNote note)> fixtureTargets = new Dictionary<int, (float, SingingNote)>();
             int noteIndex = 0;
+            int arrayIndex = 0;
             
             foreach (var note in notes)
             {
@@ -288,30 +341,67 @@ namespace Encounter.Scenario
                     float t = Mathf.InverseLerp(minMidiNote, maxMidiNote, note.key);
                     float targetHeight = Mathf.Lerp(100f, 0f, t);
                     
-                    noteAssignments.Add((targetFixture, targetHeight, note));
+                    if (enableDebugLog)
+                    {
+                        Debug.Log($"[CuePlayer] MoveFixturesToNotePositions: ノート[{arrayIndex}] '{note.lyric}' (key={note.key}) → フィクスチャ{targetFixture}, 高さ={targetHeight:F1}");
+                    }
+                    
+                    // 同じフィクスチャに複数のノートが割り当てられる場合、最後のノートの位置で上書き
+                    if (fixtureTargets.ContainsKey(targetFixture))
+                    {
+                        if (enableDebugLog)
+                        {
+                            Debug.Log($"[CuePlayer] 警告: フィクスチャ{targetFixture}は既にノート '{fixtureTargets[targetFixture].note.lyric}' に割り当てられています。'{note.lyric}' で上書きします。");
+                        }
+                    }
+                    fixtureTargets[targetFixture] = (targetHeight, note);
                     noteIndex++;
                 }
+                arrayIndex++;
             }
 
-            if (noteAssignments.Count == 0)
+            if (fixtureTargets.Count == 0)
             {
                 yield break;
             }
 
             if (enableDebugLog)
             {
-                Debug.Log($"[CuePlayer] {noteAssignments.Count}個のノートを検出。各フィクスチャを事前に移動します。");
+                Debug.Log($"[CuePlayer] {fixtureTargets.Count}個のフィクスチャを移動します（ノート数: {noteIndex}個）。");
             }
 
-            // 全てのフィクスチャを並列で移動（全て完了するまで待機）
+            // 各フィクスチャに対して移動コルーチンを開始（レースコンディション防止のため、同じフィクスチャに対しては1つだけ）
             List<Coroutine> moveCoroutines = new List<Coroutine>();
-            foreach (var assignment in noteAssignments)
+            foreach (var kvp in fixtureTargets)
             {
+                int fixtureIndex = kvp.Key;
+                float targetHeight = kvp.Value.targetHeight;
+                string noteLyric = kvp.Value.note.lyric;
+                
+                if (enableDebugLog)
+                {
+                    Debug.Log($"[CuePlayer] フィクスチャ{fixtureIndex}を高さ{targetHeight:F1}に移動開始（ノート: '{noteLyric}'）");
+                }
+                
+                // 同じフィクスチャに対して既に実行中のコルーチンがあれば停止（レースコンディション防止）
+                if (_activeMoveCoroutines.ContainsKey(fixtureIndex) && _activeMoveCoroutines[fixtureIndex] != null)
+                {
+                    Coroutine oldCoroutine = _activeMoveCoroutines[fixtureIndex];
+                    StopCoroutine(oldCoroutine);
+                    // 辞書から削除して、停止されたコルーチンが検知できるようにする
+                    _activeMoveCoroutines.Remove(fixtureIndex);
+                    if (enableDebugLog)
+                    {
+                        Debug.Log($"[CuePlayer] フィクスチャ{fixtureIndex}の既存の移動コルーチンを停止しました。");
+                    }
+                }
+                
                 // 移動中は消灯
-                controller.SetFixtureColor(assignment.fixtureIndex, Color.black);
+                controller.SetFixtureColor(fixtureIndex, Color.black);
                 
                 // 各フィクスチャの移動を並列で開始
-                Coroutine moveCoroutine = StartCoroutine(MoveFixtureToHeight(assignment.fixtureIndex, assignment.targetHeight));
+                Coroutine moveCoroutine = StartCoroutine(MoveFixtureToHeight(fixtureIndex, targetHeight));
+                _activeMoveCoroutines[fixtureIndex] = moveCoroutine; // 実行中のコルーチンを記録
                 moveCoroutines.Add(moveCoroutine);
             }
             controller.Apply();
@@ -321,6 +411,9 @@ namespace Encounter.Scenario
             {
                 yield return moveCoroutine;
             }
+
+            // 完了したコルーチンをクリア
+            _activeMoveCoroutines.Clear();
 
             if (enableDebugLog)
             {
@@ -598,6 +691,170 @@ namespace Encounter.Scenario
                 Mathf.Clamp01(state.b / 255f)
             );
             controller.SetFixtureColor(state.index, color);
+        }
+
+        // TTSモーションの開始時刻と継続時間を追跡（連続するTTSエントリ間でスムーズに継続するため）
+        private float _ttsWaveMotionStartTime = 0f;
+        private float _ttsWaveMotionEndTime = 0f;
+
+        /// <summary>
+        /// TTS用の波打つような美しいモーションを開始
+        /// </summary>
+        /// <param name="duration">モーションの継続時間（秒）。0以下の場合は無期限に継続</param>
+        /// <param name="extendIfRunning">既存のモーションが実行中の場合は継続時間を延長する（連続するTTSエントリ間でスムーズに継続）</param>
+        public void StartTTSWaveMotion(float duration = 0f, bool extendIfRunning = true)
+        {
+            if (controller == null)
+            {
+                Debug.LogError("[CuePlayer] KineticLightControllerが設定されていません。");
+                return;
+            }
+
+            // 既存のモーションが実行中で、延長が有効な場合
+            if (extendIfRunning && _currentTTSWaveMotion != null && duration > 0f)
+            {
+                // 現在時刻から新しい終了時刻を計算
+                float currentTime = Time.time;
+                float newEndTime = currentTime + duration;
+                
+                // 既存の終了時刻より後になる場合のみ更新
+                if (newEndTime > _ttsWaveMotionEndTime)
+                {
+                    _ttsWaveMotionEndTime = newEndTime;
+                    if (enableDebugLog)
+                    {
+                        float remainingTime = _ttsWaveMotionEndTime - currentTime;
+                        Debug.Log($"[CuePlayer] TTS波打つモーション継続時間を延長: 残り{remainingTime:F2}秒");
+                    }
+                    return; // 既存のモーションを継続
+                }
+            }
+
+            // 既存のTTSモーションを停止（延長しない場合、または新しいモーションを開始する場合）
+            StopTTSWaveMotion();
+
+            if (enableDebugLog)
+            {
+                if (duration > 0f)
+                {
+                    Debug.Log($"[CuePlayer] TTS波打つモーション開始: {duration:F2}秒");
+                }
+                else
+                {
+                    Debug.Log("[CuePlayer] TTS波打つモーション開始: 無期限");
+                }
+            }
+
+            _ttsWaveMotionStartTime = Time.time;
+            _ttsWaveMotionEndTime = duration > 0f ? Time.time + duration : float.MaxValue;
+            _currentTTSWaveMotion = StartCoroutine(CoTTSWaveMotion(duration));
+        }
+
+        /// <summary>
+        /// TTS用の波打つモーションを停止
+        /// </summary>
+        public void StopTTSWaveMotion()
+        {
+            if (_currentTTSWaveMotion != null)
+            {
+                StopCoroutine(_currentTTSWaveMotion);
+                _currentTTSWaveMotion = null;
+                _ttsWaveMotionStartTime = 0f;
+                _ttsWaveMotionEndTime = 0f;
+                if (enableDebugLog)
+                {
+                    Debug.Log("[CuePlayer] TTS波打つモーション停止");
+                }
+            }
+        }
+
+        /// <summary>
+        /// TTS用の波打つモーションのコルーチン
+        /// </summary>
+        private IEnumerator CoTTSWaveMotion(float duration)
+        {
+            if (controller == null || controller.fixtures == null || controller.fixtures.Count == 0)
+            {
+                yield break;
+            }
+
+            int fixtureCount = controller.fixtures.Count;
+            float startTime = _ttsWaveMotionStartTime; // 開始時刻を使用（連続するTTSエントリ間で継続するため）
+            float interval = 1f / updateRate;
+            float elapsed = 0f;
+
+            // 各フィクスチャの初期位相を設定（波が連続して見えるように）
+            float[] fixturePhases = new float[fixtureCount];
+            for (int i = 0; i < fixtureCount; i++)
+            {
+                // 各フィクスチャに異なる位相を設定（0から2πまで均等に分散）
+                fixturePhases[i] = (float)i / fixtureCount * 2f * Mathf.PI;
+            }
+
+            // 現在の高さを初期化（既存の高さを保持）
+            for (int i = 0; i < fixtureCount; i++)
+            {
+                if (!_currentFixtureHeights.ContainsKey(i))
+                {
+                    _currentFixtureHeights[i] = ttsWaveHeightCenter;
+                }
+            }
+
+            // 継続時間が0以下の場合は無期限に継続
+            // それ以外の場合は、終了時刻まで継続（連続するTTSエントリ間で延長される可能性がある）
+            while (duration <= 0f || Time.time < _ttsWaveMotionEndTime)
+            {
+                elapsed = Time.time - startTime;
+                float time = elapsed;
+
+                // 音声入力の音量を取得（AudioInputManagerが設定されている場合）
+                float currentRms = 0f;
+                bool hasAudioInput = false;
+                if (audioInputManager != null)
+                {
+                    currentRms = audioInputManager.CurrentRms;
+                    hasAudioInput = currentRms >= ttsVoiceThreshold;
+                }
+
+                // 音量に応じて振幅を調整
+                // 無音時: 振幅を4分の1に
+                // 音声入力時: RMS値に応じて振幅を増やす（RMSが大きいほど振幅も大きくなる）
+                float amplitudeMultiplier = hasAudioInput 
+                    ? Mathf.Lerp(ttsSilentAmplitudeMultiplier, 1f, Mathf.Clamp01(currentRms / 0.3f)) // RMS 0.3を最大として正規化
+                    : ttsSilentAmplitudeMultiplier;
+                float currentAmplitude = ttsWaveHeightAmplitude * amplitudeMultiplier;
+
+                // 各フィクスチャに対して波を適用
+                for (int i = 0; i < fixtureCount; i++)
+                {
+                    // 高さの波（サイン波）
+                    float heightWave = Mathf.Sin(time * ttsWaveFrequency * 2f * Mathf.PI + fixturePhases[i]);
+                    float targetHeight = ttsWaveHeightCenter + heightWave * currentAmplitude;
+                    targetHeight = Mathf.Clamp(targetHeight, 0f, 100f);
+
+                    // 現在の高さから目標高さへ滑らかに移動
+                    float currentHeight = _currentFixtureHeights.ContainsKey(i) ? _currentFixtureHeights[i] : ttsWaveHeightCenter;
+                    float newHeight = Mathf.Lerp(currentHeight, targetHeight, ttsHeightLerpSpeed); // 滑らかな補間
+                    _currentFixtureHeights[i] = newHeight;
+                    controller.SetFixtureHeight(i, Mathf.RoundToInt(newHeight));
+
+                    // 色の波（色相を時間と位相に基づいて変化）
+                    float colorPhase = time * ttsColorSpeed + fixturePhases[i] / (2f * Mathf.PI);
+                    float hue = (colorPhase % 1f + 1f) % 1f; // 0-1の範囲に正規化
+                    Color color = Color.HSVToRGB(hue, 1.0f, 1.0f);
+                    controller.SetFixtureColor(i, color);
+                }
+
+                controller.Apply();
+                yield return new WaitForSeconds(interval);
+            }
+
+            if (enableDebugLog)
+            {
+                Debug.Log("[CuePlayer] TTS波打つモーション完了");
+            }
+
+            _currentTTSWaveMotion = null;
         }
     }
 }
