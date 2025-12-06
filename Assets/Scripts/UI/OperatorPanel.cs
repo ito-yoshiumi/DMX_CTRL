@@ -126,14 +126,33 @@ namespace Encounter.UI
             GUILayout.BeginArea(new Rect(panelPosition.x, panelPosition.y, panelSize.x, panelSize.y), GUI.skin.box);
             GUILayout.Label("Operator Panel (Toggle: U)");
             
+            // 初期化が完了していない場合はボタンを無効化
+            bool isInitialized = runner != null && runner.IsInitialized;
+            GUI.enabled = isInitialized;
+            
             if (GUILayout.Button("Run Scenario (Space)"))
             {
-                runner?.RunAll();
+                if (isInitialized)
+                {
+                    runner?.RunAll();
+                }
             }
             
             if (GUILayout.Button("Stop Scenario (R)"))
             {
-                runner?.Stop();
+                if (isInitialized)
+                {
+                    runner?.Stop();
+                }
+            }
+            
+            GUI.enabled = true;
+            
+            // 初期化中の場合、メッセージを表示
+            if (!isInitialized && runner != null)
+            {
+                GUILayout.Space(5);
+                GUILayout.Label("初期化中...", GUI.skin.label);
             }
             
             GUILayout.Space(10);

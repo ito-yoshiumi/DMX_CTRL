@@ -30,10 +30,19 @@ namespace Encounter.DMX
         [Tooltip("IP選択のログを表示")]
         public bool logSelection = false;
 
+        [Header("DMX Debug")]
+        [Tooltip("DMX送信の詳細ログを表示するか")]
+        public bool enableDmxDebugLog = false;
+        [Tooltip("DMX送信のログ間隔（秒）")]
+        public float dmxLogInterval = 1.0f;
+        [Tooltip("送信パケット数を表示するか")]
+        public bool showPacketCount = true;
+
         private UdpClient _udp;
         private IPEndPoint _remoteEP;
         private IPAddress _localBindAddress;
         private byte _sequence = 0;
+        private float _lastDmxLogTime = 0f;
 
         void Awake()
         {
@@ -106,6 +115,7 @@ namespace Encounter.DMX
         }
 
         private int _sendCount = 0;
+        private int _errorCount = 0;
         private float _lastLogTime = 0f;
         private const float LOG_INTERVAL = 5f; // 5秒ごとにログ出力
 
@@ -113,16 +123,26 @@ namespace Encounter.DMX
         {
             if (_udp == null || _remoteEP == null)
             {
-                Debug.LogError("[ArtNetClient] UDP未初期化です。");
+                Debug.LogError("[ArtNetClient] UDP未初期化です。SetupSocket()を確認してください。");
+                _errorCount++;
                 return;
             }
             
             _sendCount++;
             float currentTime = Time.realtimeSinceStartup;
-            if (currentTime - _lastLogTime > LOG_INTERVAL)
+            
+            // 定期的な送信ログ
+            if (showPacketCount && currentTime - _lastLogTime > LOG_INTERVAL)
             {
-                Debug.Log($"[ArtNetClient] DMX送信中... (送信回数: {_sendCount}, Net={net}, Subnet={subnet}, Universe={universe})");
+                Debug.Log($"[ArtNetClient] DMX送信中... (送信回数: {_sendCount}, エラー: {_errorCount}, Net={net}, Subnet={subnet}, Universe={universe}, 宛先: {targetIp}:{targetPort})");
                 _lastLogTime = currentTime;
+            }
+            
+            // 詳細なDMX値ログ
+            if (enableDmxDebugLog && currentTime - _lastDmxLogTime > dmxLogInterval)
+            {
+                LogDmxValues(dmx512);
+                _lastDmxLogTime = currentTime;
             }
 
             int length = Mathf.Clamp(dmx512?.Length ?? 512, 1, 512);
@@ -172,15 +192,54 @@ namespace Encounter.DMX
             try
             {
                 _udp.Send(packet, packet.Length);
+                
+                // 初回送信時のみ詳細ログ
+                if (_sendCount == 1)
+                {
+                    Debug.Log($"[ArtNetClient] 初回DMX送信成功: {targetIp}:{targetPort}, Net={net}, Subnet={subnet}, Universe={universe}, パケットサイズ={packet.Length}bytes");
+                }
             }
             catch (SocketException se)
             {
-                Debug.LogError($"[ArtNetClient] Art-Net送信エラー: {se.Message}");
+                _errorCount++;
+                Debug.LogError($"[ArtNetClient] Art-Net送信エラー (SocketException): {se.Message} (エラー回数: {_errorCount})");
             }
             catch (Exception e)
             {
-                Debug.LogError($"[ArtNetClient] Art-Net送信エラー: {e.Message}");
+                _errorCount++;
+                Debug.LogError($"[ArtNetClient] Art-Net送信エラー: {e.Message} (エラー回数: {_errorCount})");
             }
+        }
+
+        private void LogDmxValues(byte[] dmx512)
+        {
+            if (dmx512 == null) return;
+            
+            int nonZeroCount = 0;
+            string log = "[ArtNetClient] DMX値: ";
+            
+            for (int i = 0; i < Mathf.Min(dmx512.Length, 512); i++)
+            {
+                if (dmx512[i] > 0)
+                {
+                    nonZeroCount++;
+                    if (nonZeroCount <= 20) // 最大20チャンネルまで表示
+                    {
+                        log += $"Ch{i + 1}={dmx512[i]} ";
+                    }
+                }
+            }
+            
+            if (nonZeroCount > 20)
+            {
+                log += $"... (合計{nonZeroCount}チャンネルが非ゼロ)";
+            }
+            else if (nonZeroCount == 0)
+            {
+                log += "全て0（消灯状態）";
+            }
+            
+            Debug.Log(log);
         }
 
         // ---- Utility Methods ----

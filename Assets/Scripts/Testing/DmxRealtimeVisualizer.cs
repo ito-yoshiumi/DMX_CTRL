@@ -11,11 +11,12 @@ namespace Encounter.Testing
     public class DmxRealtimeVisualizer : MonoBehaviour
     {
         [Header("References")]
-        public AudioInputManager audioInputManager;
-        [Tooltip("各SquareのSpriteRenderer（PitchStaffVisualizerと同じ順序）")]
-        public SpriteRenderer[] squares = new SpriteRenderer[5];
+        [Tooltip("KineticLightController（実際にDMX機器に送信している値を見るため）")]
+        public Encounter.DMX.KineticLightController kineticLightController;
 
         [Header("Visualization Settings")]
+        [Tooltip("表示するフィクスチャ数（0の場合はKineticLightControllerのフィクスチャ数を使用）")]
+        public int fixtureCount = 0;
         [Tooltip("スプライト間のX間隔")]
         public float spriteSpacing = 1f;
         [Tooltip("スプライトのX座標の中心")]
@@ -35,46 +36,46 @@ namespace Encounter.Testing
         [Tooltip("枠の色")]
         public Color borderColor = Color.yellow;
 
+        [Header("Update Settings")]
+        [Tooltip("更新間隔（秒）。0の場合は毎フレーム更新")]
+        public float updateInterval = 0.1f;
+
         private SpriteRenderer[] _spriteRenderers;
         private GameObject[] _spriteObjects;
-        private PitchToHeightMapper[] _pitchMappers;
-        private float _currentPitch = 0f;
+        private float _lastUpdateTime = 0f;
 
         void Start()
         {
-            // AudioInputManagerを検索
-            if (audioInputManager == null)
+            // KineticLightControllerを検索
+            if (kineticLightController == null)
             {
-                audioInputManager = FindFirstObjectByType<AudioInputManager>();
+                kineticLightController = FindFirstObjectByType<Encounter.DMX.KineticLightController>();
             }
 
-            // 各SquareからPitchToHeightMapperを取得
-            _pitchMappers = new PitchToHeightMapper[squares.Length];
-            for (int i = 0; i < squares.Length; i++)
+            if (kineticLightController == null)
             {
-                if (squares[i] != null)
-                {
-                    _pitchMappers[i] = squares[i].gameObject.GetComponent<PitchToHeightMapper>();
-                }
+                Debug.LogError("[DmxRealtimeVisualizer] KineticLightControllerが見つかりません。");
+                return;
+            }
+
+            // フィクスチャ数が0の場合は、KineticLightControllerから取得
+            if (fixtureCount <= 0 && kineticLightController.fixtures != null)
+            {
+                fixtureCount = kineticLightController.fixtures.Count;
+            }
+
+            if (fixtureCount <= 0)
+            {
+                Debug.LogWarning("[DmxRealtimeVisualizer] フィクスチャ数が0です。スプライトを作成できません。");
+                return;
             }
 
             // スプライトを作成
             CreateSprites();
-
-            // イベント購読
-            if (audioInputManager != null)
-            {
-                audioInputManager.OnPitchHz += OnPitchReceived;
-            }
         }
 
         void OnDestroy()
         {
-            if (audioInputManager != null)
-            {
-                audioInputManager.OnPitchHz -= OnPitchReceived;
-            }
-
             // スプライトを削除
             if (_spriteObjects != null)
             {
@@ -88,15 +89,35 @@ namespace Encounter.Testing
             }
         }
 
-        private void OnPitchReceived(float pitchHz)
+        void Update()
         {
-            _currentPitch = pitchHz;
+            // 更新間隔をチェック
+            if (updateInterval > 0f)
+            {
+                if (Time.time - _lastUpdateTime < updateInterval)
+                {
+                    return;
+                }
+                _lastUpdateTime = Time.time;
+            }
+
             UpdatePositions();
         }
 
         private void CreateSprites()
         {
-            int count = squares != null ? squares.Length : 5;
+            // フィクスチャ数を決定
+            int count = fixtureCount;
+            if (count <= 0 && kineticLightController != null && kineticLightController.fixtures != null)
+            {
+                count = kineticLightController.fixtures.Count;
+            }
+            if (count <= 0)
+            {
+                count = 5; // デフォルト値
+                Debug.LogWarning("[DmxRealtimeVisualizer] フィクスチャ数が0です。デフォルト値5を使用します。");
+            }
+
             _spriteRenderers = new SpriteRenderer[count];
             _spriteObjects = new GameObject[count];
 
@@ -167,23 +188,30 @@ namespace Encounter.Testing
 
         private void UpdatePositions()
         {
-            if (_spriteRenderers == null || _pitchMappers == null) return;
+            if (_spriteRenderers == null || kineticLightController == null) return;
 
-            for (int i = 0; i < _spriteRenderers.Length && i < _pitchMappers.Length; i++)
+            int fixtureCount = kineticLightController.fixtures != null ? kineticLightController.fixtures.Count : 0;
+            if (fixtureCount == 0)
             {
-                if (_spriteRenderers[i] == null || _pitchMappers[i] == null) continue;
+                return;
+            }
 
-                // 各SquareのPitchToHeightMapperから、DMX機器に送っているリアルタイムの数値（最新の目標値）を取得
-                int targetDmx = _pitchMappers[i].GetTargetDmxValue(_currentPitch);
+            for (int i = 0; i < _spriteRenderers.Length && i < fixtureCount; i++)
+            {
+                if (_spriteRenderers[i] == null) continue;
+
+                // 実際にDMX機器に送信されている高さ値を取得
+                int actualDmxHeight = kineticLightController.GetFixtureHeight(i);
 
                 // DMX値(0-100)をY座標(topY to bottomY)にマッピング
                 // DMX 0 = 上段（topY）
                 // DMX 100 = 下段（bottomY）
-                float t = Mathf.Clamp01((float)targetDmx / 100f);
+                float t = Mathf.Clamp01((float)actualDmxHeight / 100f);
                 float y = Mathf.Lerp(topY, bottomY, t);
 
-                // X座標を計算（Squareと同じ位置に配置）
-                float x = centerX + (i - (squares.Length - 1) / 2f) * spriteSpacing;
+                // X座標を計算（中央を基準に配置）
+                int totalCount = _spriteRenderers.Length;
+                float x = centerX + (i - (totalCount - 1) / 2f) * spriteSpacing;
 
                 // 位置を更新
                 _spriteObjects[i].transform.position = new Vector3(x, y, 0f);

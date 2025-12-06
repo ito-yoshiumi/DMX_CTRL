@@ -40,6 +40,12 @@ namespace Encounter.Testing
         {
             if (scenarioRunner == null) return;
 
+            // 初期化が完了していない場合は無視
+            if (!scenarioRunner.IsInitialized)
+            {
+                return;
+            }
+
             if (Input.GetKeyDown(startKey))
             {
                 if (!scenarioRunner.IsRunning)

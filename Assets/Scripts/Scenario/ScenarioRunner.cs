@@ -1,9 +1,11 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Encounter.DMX;
 using Encounter.Audio;
 using Encounter.Utils;
+using Encounter.Testing;
 
 namespace Encounter.Scenario
 {
@@ -19,6 +21,12 @@ namespace Encounter.Scenario
         public CuePlayer cuePlayer;
         public AudioInputManager audioInputManager;
         public ParticipantRecordingManager participantRecorder;
+        [Tooltip("シナリオ再生中に無効化したいVisualizer（競合回避のため）")]
+        public List<MonoBehaviour> conflictingVisualizers;
+
+        [Header("Start Settings")]
+        [Tooltip("スペースキーでシナリオを開始するか（falseの場合は自動開始）")]
+        public bool waitForSpaceKey = true;
 
         [Header("Debug")]
         [Tooltip("デバッグログを表示するかどうか")]
@@ -26,8 +34,11 @@ namespace Encounter.Scenario
 
         private ScenarioFile _scenario;
         private bool _isRunning = false; // シナリオ実行中かどうか
+        private bool _waitingForStart = false; // スペースキー待ち中かどうか
+        private bool _isInitialized = false; // 初期化完了フラグ
 
         public bool IsRunning => _isRunning; // 実行状態を取得するプロパティ
+        public bool IsInitialized => _isInitialized; // 初期化完了状態を取得するプロパティ
 
         IEnumerator Start()
         {
@@ -83,16 +94,68 @@ namespace Encounter.Scenario
                 }
             }
 
+            // 初期化完了フラグを設定
+            _isInitialized = true;
+            
             if (enableDebugLog)
             {
-                Debug.Log($"[ScenarioRunner] 初期化完了。RunAll()を呼び出してシナリオを開始してください。 (経過時間: {Time.time:F2}秒)");
+                if (waitForSpaceKey)
+                {
+                    Debug.Log($"[ScenarioRunner] 初期化完了。スペースキーを押すとシナリオを開始します。 (経過時間: {Time.time:F2}秒)");
+                }
+                else
+                {
+                    Debug.Log($"[ScenarioRunner] 初期化完了。RunAll()を呼び出してシナリオを開始してください。 (経過時間: {Time.time:F2}秒)");
+                }
             }
-            // 自動再生しない。外部から RunAll() を叩く。
+            
+            // スペースキー待ちモードの場合
+            if (waitForSpaceKey)
+            {
+                _waitingForStart = true;
+                // ビジュアライザは有効のまま（無効化しない）
+            }
+            else
+            {
+                // 自動再生しない。外部から RunAll() を叩く。
+            }
+            
             OperationLogger.Instance?.Log("Scenario", "Initialized", $"Resource: {scenarioResource}");
+        }
+
+        void Update()
+        {
+            // 初期化が完了していない場合は無視
+            if (!_isInitialized)
+            {
+                return;
+            }
+            
+            // スペースキー待ち中で、スペースキーが押されたらシナリオ開始
+            if (_waitingForStart && !_isRunning && Input.GetKeyDown(KeyCode.Space))
+            {
+                if (enableDebugLog)
+                {
+                    Debug.Log("[ScenarioRunner] スペースキーが押されました。シナリオを開始します。");
+                }
+                _waitingForStart = false;
+                RunAll();
+            }
         }
 
         public void RunAll()
         {
+            Debug.Log("========================================");
+            Debug.Log("[ScenarioRunner] RunAll() が呼ばれました");
+            Debug.Log("========================================");
+            
+            // 初期化が完了していない場合は実行しない
+            if (!_isInitialized)
+            {
+                Debug.LogWarning("[ScenarioRunner] 初期化が完了していません。シナリオを開始できません。");
+                return;
+            }
+            
             if (_scenario == null)
             {
                 Debug.LogError("[ScenarioRunner] シナリオが読み込まれていません。");
@@ -100,18 +163,18 @@ namespace Encounter.Scenario
             }
             if (_isRunning)
             {
-                if (enableDebugLog)
-                {
-                    Debug.LogWarning("[ScenarioRunner] シナリオは既に実行中です。");
-                }
+                Debug.LogWarning("[ScenarioRunner] シナリオは既に実行中です。");
                 return;
             }
+            
+            Debug.Log("[ScenarioRunner] 競合するVisualizerを無効化します...");
+            // 競合するVisualizerを無効化
+            SetVisualizersEnabled(false);
+
             _isRunning = true;
+            Debug.Log("[ScenarioRunner] CoRun() コルーチンを開始します");
             StartCoroutine(CoRun());
-            if (enableDebugLog)
-            {
-                Debug.Log("[ScenarioRunner] シナリオ開始");
-            }
+            Debug.Log("[ScenarioRunner] シナリオ開始");
             OperationLogger.Instance?.Log("Scenario", "Started");
         }
 
@@ -132,16 +195,145 @@ namespace Encounter.Scenario
                 audioSource.Stop();
             }
             participantRecorder?.ClearRecordings();
+
+            // Visualizerを復帰
+            SetVisualizersEnabled(true);
+
             if (enableDebugLog)
             {
                 Debug.Log("[ScenarioRunner] シナリオ停止");
             }
             OperationLogger.Instance?.Log("Scenario", "Stopped");
         }
+        
+        private void SetVisualizersEnabled(bool enabled)
+        {
+            if (enableDebugLog)
+            {
+                Debug.Log($"[ScenarioRunner] SetVisualizersEnabled({enabled}) 呼び出し");
+            }
+
+            // Testing名前空間のVisualizerを動的に探して無効化（Inspector設定漏れ対策）
+            if (!enabled)
+            {
+                // 型で直接検索（より確実）
+                var pitchStaffVisualizers = FindObjectsOfType<PitchStaffVisualizer>();
+                var audioInputVisualizers = FindObjectsOfType<AudioInputVisualizer>();
+                
+                if (enableDebugLog)
+                {
+                    Debug.Log($"[ScenarioRunner] 検出されたVisualizer: PitchStaffVisualizer={pitchStaffVisualizers.Length}個, AudioInputVisualizer={audioInputVisualizers.Length}個");
+                }
+                
+                if (conflictingVisualizers == null)
+                {
+                     conflictingVisualizers = new List<MonoBehaviour>();
+                }
+
+                // PitchStaffVisualizer を無効化
+                foreach (var v in pitchStaffVisualizers)
+                {
+                    if (v != null)
+                    {
+                        if (enableDebugLog) Debug.Log($"[ScenarioRunner] PitchStaffVisualizer ({v.gameObject.name}) を無効化します。現在の状態: enabled={v.enabled}, sendHeightToDmx={v.sendHeightToDmx}, sendColorToDmx={v.sendColorToDmx}");
+                        
+                        // DMX送信を停止
+                        v.sendHeightToDmx = false;
+                        v.sendColorToDmx = false;
+                        
+                        // コンポーネント自体も無効化
+                        v.enabled = false;
+                        
+                        // conflictingVisualizersに動的に追加して、後で復帰できるようにする
+                        if (!conflictingVisualizers.Contains(v))
+                        {
+                            conflictingVisualizers.Add(v);
+                            if (enableDebugLog) Debug.Log($"[ScenarioRunner] PitchStaffVisualizer を conflictingVisualizers に追加しました。");
+                        }
+                    }
+                }
+
+                // AudioInputVisualizer を無効化
+                foreach (var v in audioInputVisualizers)
+                {
+                    if (v != null && v.enabled)
+                    {
+                        if (enableDebugLog) Debug.Log($"[ScenarioRunner] AudioInputVisualizer ({v.gameObject.name}) を無効化します。");
+                        v.enabled = false;
+                        
+                        if (!conflictingVisualizers.Contains(v))
+                        {
+                            conflictingVisualizers.Add(v);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // 有効化時: PitchStaffVisualizer の DMX送信フラグも復帰
+                if (conflictingVisualizers != null)
+                {
+                    foreach (var v in conflictingVisualizers)
+                    {
+                        if (v is PitchStaffVisualizer psv)
+                        {
+                            if (enableDebugLog) Debug.Log($"[ScenarioRunner] PitchStaffVisualizer ({psv.gameObject.name}) のDMX送信フラグを復帰します。");
+                            // 元の値は保持されていないので、デフォルト値（true）に戻す
+                            // 必要に応じて、無効化前に値を保存する実装も可能
+                            psv.sendHeightToDmx = true;
+                            psv.sendColorToDmx = true;
+                        }
+                    }
+                }
+            }
+
+            // Inspectorで設定されたVisualizerも処理
+            if (conflictingVisualizers != null)
+            {
+                if (enableDebugLog)
+                {
+                    Debug.Log($"[ScenarioRunner] conflictingVisualizers リスト: {conflictingVisualizers.Count}個");
+                }
+
+                foreach (var v in conflictingVisualizers)
+                {
+                    if (v != null)
+                    {
+                        if (enableDebugLog)
+                        {
+                            Debug.Log($"[ScenarioRunner] {v.GetType().Name} ({v.gameObject.name}) を enabled={enabled} に設定");
+                        }
+                        v.enabled = enabled;
+                    }
+                }
+            }
+        }
 
         private IEnumerator CoRun()
         {
             int voiceTriggerTimeoutCount = 0; // タイムアウト回数をカウント
+            
+            // 最初のsingingエントリを探して、その前にフィクスチャの高さをリセット
+            bool hasResetHeights = false;
+            for (int i = 0; i < _scenario.entries.Count; i++)
+            {
+                var e = _scenario.entries[i];
+                if ((e.type == "singing" || (e.singingNotes != null && e.singingNotes.Length > 0)) && 
+                    e.singingNotes != null && e.singingNotes.Length > 0)
+                {
+                    // 最初のsingingエントリの前にリセット
+                    if (!hasResetHeights && cuePlayer != null)
+                    {
+                        if (enableDebugLog)
+                        {
+                            Debug.Log("[ScenarioRunner] 最初のsingingエントリの前にフィクスチャの高さをリセットします");
+                        }
+                        cuePlayer.ResetFixtureHeights();
+                        hasResetHeights = true;
+                    }
+                    break;
+                }
+            }
             
             for (int i = 0; i < _scenario.entries.Count; i++)
             {
@@ -192,10 +384,58 @@ namespace Encounter.Scenario
 
                 if (clip != null && audioSource != null)
                 {
-                    // DMXキュー開始
-                    if (!string.IsNullOrEmpty(e.dmxCue) && cuePlayer != null)
+                    Debug.Log($"[ScenarioRunner] ===== エントリ処理開始: id={e.id}, type={e.type} =====");
+                    
+                    // DMXキュー処理
+                    bool isDynamicNotes = (e.dmxCue == "DynamicNotes");
+                    Debug.Log($"[ScenarioRunner] DMXCue: '{e.dmxCue}', Dynamic: {isDynamicNotes}");
+                    Debug.Log($"[ScenarioRunner] singingNotes: {(e.singingNotes != null ? $"{e.singingNotes.Length}個" : "null")}");
+                    if (e.singingNotes != null && e.singingNotes.Length > 0)
                     {
-                        cuePlayer.PlayCue(e.dmxCue);
+                        for (int ni = 0; ni < e.singingNotes.Length; ni++)
+                        {
+                            var n = e.singingNotes[ni];
+                            Debug.Log($"[ScenarioRunner]   Note[{ni}]: key={n.key}, lyric='{n.lyric}', frame_length={n.frame_length}");
+                        }
+                    }
+
+                    if (cuePlayer == null)
+                    {
+                        Debug.LogError("[ScenarioRunner] cuePlayer が null です！");
+                    }
+                    else
+                    {
+                        Debug.Log($"[ScenarioRunner] cuePlayer は有効です。controller: {(cuePlayer.controller != null ? "有効" : "null")}");
+                        
+                        if (isDynamicNotes && e.singingNotes != null && e.singingNotes.Length > 0)
+                        {
+                            // 動的ノートモード: フィクスチャの高さを初期化
+                            // 実際の移動はPlayNoteSequence内で各ノートの前に処理される
+                            Debug.Log($"[ScenarioRunner] >>> DynamicNotesモード: 初期化中... (ノート数: {e.singingNotes.Length})");
+                            cuePlayer.PrewarmNotes(e.singingNotes);
+                            Debug.Log($"[ScenarioRunner] 初期化完了（移動は各ノートの前に処理されます）");
+                        }
+                        else if (!string.IsNullOrEmpty(e.dmxCue))
+                        {
+                            // 通常のDMXキュー再生
+                            Debug.Log($"[ScenarioRunner] 通常DMXキュー再生: {e.dmxCue}");
+                            cuePlayer.PlayCue(e.dmxCue);
+                        }
+                        else
+                        {
+                            Debug.Log($"[ScenarioRunner] DMXキューは設定されていません");
+                        }
+                    }
+
+                    // 動的ノートモード: ライトの移動を完了してから音声を再生
+                    if (isDynamicNotes && cuePlayer != null && e.singingNotes != null && e.singingNotes.Length > 0)
+                    {
+                        Debug.Log($"[ScenarioRunner] >>> DynamicNotes: ライト移動を開始します (ノート数: {e.singingNotes.Length})");
+                        
+                        // ライトの移動完了を待機
+                        yield return StartCoroutine(cuePlayer.MoveFixturesToNotePositions(e.singingNotes));
+                        
+                        Debug.Log($"[ScenarioRunner] ライト移動完了。音声再生を開始します。");
                     }
 
                     if (enableDebugLog)
@@ -203,8 +443,29 @@ namespace Encounter.Scenario
                         Debug.Log($"[ScenarioRunner] 音声再生開始: \"{e.text ?? e.path}\" ({clip.length:F2}秒, サンプルレート: {clip.frequency}Hz)");
                     }
                     
+                    // 音声再生開始時刻を記録
+                    float audioStartTime = Time.time;
+                    
                     audioSource.clip = clip;
                     audioSource.Play();
+
+                    // 動的ノートモード: 音声再生と同時にノートシーケンスを開始（既に移動は完了している）
+                    if (isDynamicNotes && cuePlayer != null && e.singingNotes != null && e.singingNotes.Length > 0)
+                    {
+                        Debug.Log($"[ScenarioRunner] >>> DynamicNotes: ノートシーケンス再生開始 (ノート数: {e.singingNotes.Length}, 音声開始時刻: {audioStartTime:F3}s)");
+                        // 移動は完了しているので、点灯シーケンスのみ開始
+                        // 音声再生開始時刻を渡して同期
+                        cuePlayer.PlayNoteSequence(e.singingNotes, audioStartTime);
+                        Debug.Log($"[ScenarioRunner] PlayNoteSequence 呼び出し完了");
+                    }
+                    else
+                    {
+                        if (isDynamicNotes)
+                        {
+                            Debug.LogWarning($"[ScenarioRunner] DynamicNotesモードですが、条件が満たされていません: cuePlayer={cuePlayer != null}, singingNotes={e.singingNotes != null && e.singingNotes.Length > 0}");
+                        }
+                    }
+
                     OperationLogger.Instance?.Log("Scenario", "AudioPlay", $"Clip:{clip.name}, Duration:{clip.length:F2}s");
                     clipDuration = clip.length;
                     
