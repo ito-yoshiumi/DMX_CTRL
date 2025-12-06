@@ -48,6 +48,16 @@ namespace Encounter.Scenario
                 Debug.Log($"[ScenarioRunner] シナリオリソースパス: {scenarioResource}");
             }
             
+            // CuePlayerにAudioInputManagerを設定（音声入力に反応するため）
+            if (cuePlayer != null && audioInputManager != null)
+            {
+                cuePlayer.audioInputManager = audioInputManager;
+                if (enableDebugLog)
+                {
+                    Debug.Log("[ScenarioRunner] CuePlayerにAudioInputManagerを設定しました");
+                }
+            }
+            
             // シナリオ読込
             TextAsset ta = Resources.Load<TextAsset>(scenarioResource);
             if (ta != null)
@@ -189,6 +199,8 @@ namespace Encounter.Scenario
             if (cuePlayer != null)
             {
                 cuePlayer.Stop();
+                // フィクスチャを最上段（高さ0）に移動
+                cuePlayer.ResetFixtureHeights();
             }
             if (audioSource != null && audioSource.isPlaying)
             {
@@ -217,8 +229,8 @@ namespace Encounter.Scenario
             if (!enabled)
             {
                 // 型で直接検索（より確実）
-                var pitchStaffVisualizers = FindObjectsOfType<PitchStaffVisualizer>();
-                var audioInputVisualizers = FindObjectsOfType<AudioInputVisualizer>();
+                var pitchStaffVisualizers = FindObjectsByType<PitchStaffVisualizer>(FindObjectsSortMode.None);
+                var audioInputVisualizers = FindObjectsByType<AudioInputVisualizer>(FindObjectsSortMode.None);
                 
                 if (enableDebugLog)
                 {
@@ -360,8 +372,8 @@ namespace Encounter.Scenario
             {
                 var e = _scenario.entries[i];
                 
-                // システムメッセージ（timeout_やrestart_messageなど）はメインループではスキップする
-                if (e.id.StartsWith("timeout_") || e.id.StartsWith("restart_message"))
+                // システムメッセージ（timeout_やrestart_message、harmony_evaluation_など）はメインループではスキップする
+                if (e.id.StartsWith("timeout_") || e.id.StartsWith("restart_message") || e.id.StartsWith("harmony_evaluation_"))
                 {
                     continue;
                 }
@@ -385,7 +397,7 @@ namespace Encounter.Scenario
                 }
                 else if (e.type == "tts" && ttsService != null)
                 {
-                    clip = ttsService.GetCachedClip(e.text, e.pitchNotes, e.speedScale, e.labFilePath);
+                    clip = ttsService.GetCachedClip(e.text, e.pitchNotes, e.speedScale, e.labFilePath, e.speakerId);
                     if (clip == null && enableDebugLog)
                     {
                         Debug.LogWarning($"[ScenarioRunner] TTSクリップが取得できません: {e.text}");
@@ -436,9 +448,30 @@ namespace Encounter.Scenario
                             cuePlayer.PrewarmNotes(e.singingNotes);
                             Debug.Log($"[ScenarioRunner] 初期化完了（移動は各ノートの前に処理されます）");
                         }
+                        else if (e.type == "tts")
+                        {
+                            // TTSタイプの場合は、dmxCueが指定されていても波打つモーションを優先
+                            // 音声の長さに合わせてモーションを継続（連続するTTSエントリの間でスムーズに継続）
+                            Debug.Log($"[ScenarioRunner] TTSタイプ: 波打つモーションを自動開始（音声長: {clip.length:F2}秒）");
+                            // 音声の長さに少し余裕を持たせる（waitAfterも考慮）
+                            float motionDuration = clip.length + (waitAfter > 0f ? waitAfter : 0f);
+                            
+                            // 録音待ちがある場合は、その時間も考慮
+                            if (e.record && e.waitForVoiceTrigger)
+                            {
+                                float timeout = e.voiceTriggerTimeout > 0f ? e.voiceTriggerTimeout : 10f;
+                                motionDuration += timeout; // タイムアウト時間も追加
+                            }
+                            else if (e.record && e.recordSeconds > 0f)
+                            {
+                                motionDuration += e.recordSeconds; // 録音時間も追加
+                            }
+                            
+                            cuePlayer.StartTTSWaveMotion(motionDuration);
+                        }
                         else if (!string.IsNullOrEmpty(e.dmxCue))
                         {
-                            // 通常のDMXキュー再生
+                            // 通常のDMXキュー再生（TTS以外の場合）
                             Debug.Log($"[ScenarioRunner] 通常DMXキュー再生: {e.dmxCue}");
                             cuePlayer.PlayCue(e.dmxCue);
                         }
@@ -520,14 +553,102 @@ namespace Encounter.Scenario
                         }
                         OperationLogger.Instance?.Log("Scenario", "RecordStart", $"Duration:{e.recordSeconds}s");
                         
+                        // 目標MIDIノートを取得（直前のnoteエントリから）
+                        int targetMidiNote = -1;
+                        if (i > 0)
+                        {
+                            // 直前のエントリを確認（imitate_X_note形式を想定）
+                            var prevEntry = _scenario.entries[i - 1];
+                            if (prevEntry != null && prevEntry.singingNotes != null && prevEntry.singingNotes.Length > 0)
+                            {
+                                // 最初の有効なノートのkeyを取得
+                                foreach (var note in prevEntry.singingNotes)
+                                {
+                                    if (note.key >= 0 && !string.IsNullOrEmpty(note.lyric))
+                                    {
+                                        targetMidiNote = note.key;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 録音待ちの間もTTSモーションを継続するため、録音開始時にモーションの継続時間を延長
+                        if (e.type == "tts" && cuePlayer != null)
+                        {
+                            float timeout = e.waitForVoiceTrigger ? (e.voiceTriggerTimeout > 0f ? e.voiceTriggerTimeout : 10f) : 0f;
+                            float recordDuration = e.recordSeconds;
+                            float additionalDuration = timeout + recordDuration;
+                            
+                            if (enableDebugLog)
+                            {
+                                Debug.Log($"[ScenarioRunner] 録音待ちの間もTTSモーションを継続: 追加時間 {additionalDuration:F2}秒");
+                            }
+                            cuePlayer.StartTTSWaveMotion(additionalDuration, extendIfRunning: true);
+                        }
+                        
                         if (e.waitForVoiceTrigger)
                         {
                             float timeout = e.voiceTriggerTimeout > 0f ? e.voiceTriggerTimeout : 10f;
                             bool isSuccess = false;
                             
-                            yield return participantRecorder.RecordWithTriggerAsync(e.recordSeconds, timeout, (success) => {
-                                isSuccess = success;
-                            });
+                            // 音声待機中にフィクスチャのライトを制御するコルーチンを開始
+                            Coroutine voiceTriggerLightCoroutine = null;
+                            if (cuePlayer != null && audioInputManager != null)
+                            {
+                                voiceTriggerLightCoroutine = StartCoroutine(ControlLightsDuringVoiceTrigger(audioInputManager, cuePlayer.controller));
+                            }
+                            
+                            // 録音中のライト制御コルーチン（コールバック内で設定される）
+                            Coroutine recordingLightCoroutine = null;
+                            
+                            // 目標MIDIノートを指定して録音（評価データも生成）
+                            yield return participantRecorder.RecordWithTriggerAsyncWithEvaluation(
+                                e.recordSeconds, 
+                                timeout, 
+                                targetMidiNote,
+                                (success) => {
+                                    isSuccess = success;
+                                },
+                                () => {
+                                    // 録音開始時に音声待機中のライト制御を停止
+                                    if (voiceTriggerLightCoroutine != null)
+                                    {
+                                        StopCoroutine(voiceTriggerLightCoroutine);
+                                        voiceTriggerLightCoroutine = null;
+                                    }
+                                    
+                                    // 録音開始時に録音中のライト制御を開始
+                                    if (cuePlayer != null && audioInputManager != null)
+                                    {
+                                        recordingLightCoroutine = StartCoroutine(ControlLightsDuringRecording(audioInputManager, cuePlayer.controller, e.recordSeconds));
+                                    }
+                                });
+                            
+                            // 録音完了後にライト制御を停止
+                            if (recordingLightCoroutine != null)
+                            {
+                                StopCoroutine(recordingLightCoroutine);
+                                recordingLightCoroutine = null;
+                            }
+                            
+                            // 録音完了後も念のためライト制御を停止（録音開始時に停止されなかった場合）
+                            if (voiceTriggerLightCoroutine != null)
+                            {
+                                StopCoroutine(voiceTriggerLightCoroutine);
+                                voiceTriggerLightCoroutine = null;
+                            }
+                            
+                            // ライトを消灯
+                            if (cuePlayer != null && cuePlayer.controller != null)
+                            {
+                                int fixtureCount = cuePlayer.controller.fixtures.Count;
+                                for (int fixtureIndex = 0; fixtureIndex < fixtureCount; fixtureIndex++)
+                                {
+                                    cuePlayer.controller.SetFixtureColor(fixtureIndex, Color.black);
+                                }
+                                cuePlayer.controller.Apply();
+                            }
                             
                             if (!isSuccess)
                             {
@@ -558,7 +679,9 @@ namespace Encounter.Scenario
                                             timeoutMessage2 = timeoutEntry.text;
                                         }
 
-                                        AudioClip timeoutClip2 = ttsService.GetCachedClip(timeoutMessage2);
+                                        AudioClip timeoutClip2 = timeoutEntry != null 
+                                            ? ttsService.GetCachedClip(timeoutMessage2, null, 1.0f, null, timeoutEntry.speakerId)
+                                            : ttsService.GetCachedClip(timeoutMessage2);
                                         
                                         if (timeoutClip2 != null)
                                         {
@@ -566,6 +689,14 @@ namespace Encounter.Scenario
                                             {
                                                 Debug.Log($"[ScenarioRunner] タイムアウトメッセージ再生: \"{timeoutMessage2}\"");
                                             }
+                                            
+                                            // TTSモーションを開始
+                                            if (cuePlayer != null)
+                                            {
+                                                float motionDuration = timeoutClip2.length + 0.3f;
+                                                cuePlayer.StartTTSWaveMotion(motionDuration, extendIfRunning: true);
+                                            }
+                                            
                                             audioSource.clip = timeoutClip2;
                                             audioSource.Play();
                                             yield return new WaitForSeconds(timeoutClip2.length + 0.3f);
@@ -583,7 +714,9 @@ namespace Encounter.Scenario
                                             restartMessage = restartEntry.text;
                                         }
                                         
-                                        AudioClip restartClip = ttsService.GetCachedClip(restartMessage);
+                                        AudioClip restartClip = restartEntry != null
+                                            ? ttsService.GetCachedClip(restartMessage, null, 1.0f, null, restartEntry.speakerId)
+                                            : ttsService.GetCachedClip(restartMessage);
                                         
                                         if (restartClip != null)
                                         {
@@ -591,6 +724,14 @@ namespace Encounter.Scenario
                                             {
                                                 Debug.Log($"[ScenarioRunner] リスタートメッセージ再生: \"{restartMessage}\"");
                                             }
+                                            
+                                            // TTSモーションを開始
+                                            if (cuePlayer != null)
+                                            {
+                                                float motionDuration = restartClip.length + 0.3f;
+                                                cuePlayer.StartTTSWaveMotion(motionDuration, extendIfRunning: true);
+                                            }
+                                            
                                             audioSource.clip = restartClip;
                                             audioSource.Play();
                                             yield return new WaitForSeconds(restartClip.length + 0.3f);
@@ -603,6 +744,16 @@ namespace Encounter.Scenario
                                     
                                     // タイムアウトカウンターをリセット
                                     voiceTriggerTimeoutCount = 0;
+                                    
+                                    // フィクスチャを最上段（高さ0）に移動
+                                    if (cuePlayer != null)
+                                    {
+                                        cuePlayer.ResetFixtureHeights();
+                                        if (enableDebugLog)
+                                        {
+                                            Debug.Log("[ScenarioRunner] リスタート前にフィクスチャを最上段に移動しました");
+                                        }
+                                    }
                                     
                                     // 1拍（約1秒）待ってからシナリオの最初から再開
                                     yield return new WaitForSeconds(1.0f);
@@ -623,7 +774,9 @@ namespace Encounter.Scenario
                                         timeoutMessage1 = timeoutEntry.text;
                                     }
 
-                                    AudioClip timeoutClip1 = ttsService.GetCachedClip(timeoutMessage1);
+                                    AudioClip timeoutClip1 = timeoutEntry != null
+                                        ? ttsService.GetCachedClip(timeoutMessage1, null, 1.0f, null, timeoutEntry.speakerId)
+                                        : ttsService.GetCachedClip(timeoutMessage1);
                                     
                                     if (timeoutClip1 != null)
                                     {
@@ -631,6 +784,14 @@ namespace Encounter.Scenario
                                         {
                                             Debug.Log($"[ScenarioRunner] タイムアウトメッセージ再生: \"{timeoutMessage1}\"");
                                         }
+                                        
+                                        // TTSモーションを開始
+                                        if (cuePlayer != null)
+                                        {
+                                            float motionDuration = timeoutClip1.length + 0.3f;
+                                            cuePlayer.StartTTSWaveMotion(motionDuration, extendIfRunning: true);
+                                        }
+                                        
                                         audioSource.clip = timeoutClip1;
                                         audioSource.Play();
                                         yield return new WaitForSeconds(timeoutClip1.length + 0.3f);
@@ -653,7 +814,42 @@ namespace Encounter.Scenario
                         }
                         else
                         {
-                            yield return participantRecorder.RecordAsync(e.recordSeconds);
+                            // 録音中のライト制御コルーチン
+                            Coroutine recordingLightCoroutine = null;
+                            
+                            // 録音開始時に録音中のライト制御を開始
+                            if (cuePlayer != null && audioInputManager != null)
+                            {
+                                recordingLightCoroutine = StartCoroutine(ControlLightsDuringRecording(audioInputManager, cuePlayer.controller, e.recordSeconds));
+                            }
+                            
+                            // 目標MIDIノートを指定して録音（評価データも生成）
+                            if (targetMidiNote >= 0)
+                            {
+                                yield return participantRecorder.RecordAsyncWithEvaluation(e.recordSeconds, targetMidiNote);
+                            }
+                            else
+                            {
+                                yield return participantRecorder.RecordAsync(e.recordSeconds);
+                            }
+                            
+                            // 録音完了後にライト制御を停止
+                            if (recordingLightCoroutine != null)
+                            {
+                                StopCoroutine(recordingLightCoroutine);
+                                recordingLightCoroutine = null;
+                            }
+                            
+                            // ライトを消灯
+                            if (cuePlayer != null && cuePlayer.controller != null)
+                            {
+                                int fixtureCount = cuePlayer.controller.fixtures.Count;
+                                for (int fixtureIndex = 0; fixtureIndex < fixtureCount; fixtureIndex++)
+                                {
+                                    cuePlayer.controller.SetFixtureColor(fixtureIndex, Color.black);
+                                }
+                                cuePlayer.controller.Apply();
+                            }
                         }
                         
                         OperationLogger.Instance?.Log("Scenario", "RecordEnd");
@@ -685,7 +881,7 @@ namespace Encounter.Scenario
                             }
                             else if (referenceEntry.type == "tts" && ttsService != null && !string.IsNullOrEmpty(referenceEntry.text))
                             {
-                                referenceClip = ttsService.GetCachedClip(referenceEntry.text, referenceEntry.pitchNotes, referenceEntry.speedScale, referenceEntry.labFilePath);
+                                referenceClip = ttsService.GetCachedClip(referenceEntry.text, referenceEntry.pitchNotes, referenceEntry.speedScale, referenceEntry.labFilePath, referenceEntry.speakerId);
                             }
                             else if (referenceEntry.type == "singing" && ttsService != null && referenceEntry.singingNotes != null && referenceEntry.singingNotes.Length > 0)
                             {
@@ -794,6 +990,9 @@ namespace Encounter.Scenario
                                     Destroy(source.gameObject);
                                 }
                             }
+                            
+                            // ハーモニー評価を実行してメッセージを返す
+                            yield return StartCoroutine(EvaluateAndPlayHarmonyMessage(participantRecorder, referenceEntry));
                         }
                         else
                         {
@@ -837,6 +1036,14 @@ namespace Encounter.Scenario
                         audioSource.clip = referenceClip;
                         audioSource.Play();
                         yield return new WaitForSeconds(referenceClip.length);
+                        
+                        // ハーモニー評価を実行してメッセージを返す
+                        ScenarioEntry referenceEntry = null;
+                        if (!string.IsNullOrEmpty(e.mixReferenceEntryId))
+                        {
+                            referenceEntry = _scenario.entries.Find(entry => entry.id == e.mixReferenceEntryId);
+                        }
+                        yield return StartCoroutine(EvaluateAndPlayHarmonyMessage(participantRecorder, referenceEntry));
                     }
                     else if (enableDebugLog)
                     {
@@ -881,6 +1088,295 @@ namespace Encounter.Scenario
             {
                 source.clip = clip;
                 source.Play();
+            }
+        }
+
+        /// <summary>
+        /// ハーモニー評価を実行してメッセージを再生する
+        /// </summary>
+        private IEnumerator EvaluateAndPlayHarmonyMessage(ParticipantRecordingManager recorder, ScenarioEntry referenceEntry)
+        {
+            if (recorder == null || ttsService == null || audioSource == null)
+            {
+                yield break;
+            }
+
+            // 評価データを取得
+            var evaluations = new List<HarmonyEvaluator.RecordingEvaluation>();
+            var recordingEvaluations = recorder.RecordingEvaluations;
+            
+            if (recordingEvaluations != null && recordingEvaluations.Count > 0)
+            {
+                evaluations.AddRange(recordingEvaluations);
+            }
+            else
+            {
+                // 評価データがない場合は録音クリップから評価を生成
+                var recordedClips = recorder.RecordedClips;
+                if (recordedClips != null && recordedClips.Count > 0)
+                {
+                    // 参照ノートから目標MIDIノートを取得
+                    List<SingingNote> referenceNotes = null;
+                    if (referenceEntry != null && referenceEntry.singingNotes != null && referenceEntry.singingNotes.Length > 0)
+                    {
+                        referenceNotes = new List<SingingNote>();
+                        foreach (var note in referenceEntry.singingNotes)
+                        {
+                            if (note.key >= 0 && !string.IsNullOrEmpty(note.lyric))
+                            {
+                                referenceNotes.Add(note);
+                            }
+                        }
+                    }
+                    
+                    for (int i = 0; i < recordedClips.Count && i < recordedClips.Count; i++)
+                    {
+                        int targetMidiNote = -1;
+                        if (referenceNotes != null && i < referenceNotes.Count)
+                        {
+                            targetMidiNote = referenceNotes[i].key;
+                        }
+                        
+                        var evaluation = HarmonyEvaluator.EvaluateRecording(
+                            recordedClips[i], 
+                            targetMidiNote, 
+                            audioInputManager);
+                        evaluations.Add(evaluation);
+                    }
+                }
+            }
+
+            // ハーモニー評価を実行
+            List<SingingNote> refNotes = null;
+            if (referenceEntry != null && referenceEntry.singingNotes != null && referenceEntry.singingNotes.Length > 0)
+            {
+                refNotes = new List<SingingNote>();
+                foreach (var note in referenceEntry.singingNotes)
+                {
+                    if (note.key >= 0 && !string.IsNullOrEmpty(note.lyric))
+                    {
+                        refNotes.Add(note);
+                    }
+                }
+            }
+            
+            var harmonyResult = HarmonyEvaluator.EvaluateHarmony(evaluations, refNotes);
+            
+            if (enableDebugLog)
+            {
+                Debug.Log($"[ScenarioRunner] ハーモニー評価完了: レベル={harmonyResult.level}, スコア={harmonyResult.overallScore:F2}, メッセージ=\"{harmonyResult.message}\"");
+            }
+
+            // 評価レベルに応じてシナリオエントリIDを決定
+            string evaluationEntryId = null;
+            switch (harmonyResult.level)
+            {
+                case HarmonyEvaluator.HarmonyLevel.Excellent:
+                    evaluationEntryId = "harmony_evaluation_excellent";
+                    break;
+                case HarmonyEvaluator.HarmonyLevel.Good:
+                    evaluationEntryId = "harmony_evaluation_good";
+                    break;
+                case HarmonyEvaluator.HarmonyLevel.Nice:
+                    evaluationEntryId = "harmony_evaluation_nice";
+                    break;
+            }
+
+            // 評価メッセージをTTSで再生
+            if (!string.IsNullOrEmpty(evaluationEntryId))
+            {
+                // シナリオから評価メッセージエントリを取得
+                var evaluationEntry = _scenario.entries.Find(entry => entry.id == evaluationEntryId);
+                if (evaluationEntry != null && ttsService != null)
+                {
+                    AudioClip messageClip = ttsService.GetCachedClip(
+                        evaluationEntry.text, 
+                        evaluationEntry.pitchNotes, 
+                        evaluationEntry.speedScale, 
+                        evaluationEntry.labFilePath,
+                        evaluationEntry.speakerId);
+                    
+                    if (messageClip != null)
+                    {
+                        if (enableDebugLog)
+                        {
+                            Debug.Log($"[ScenarioRunner] ハーモニー評価メッセージを再生: \"{evaluationEntry.text}\" (エントリID: {evaluationEntryId})");
+                        }
+                        
+                        // TTSモーションを開始
+                        if (cuePlayer != null)
+                        {
+                            float motionDuration = messageClip.length + 0.3f;
+                            cuePlayer.StartTTSWaveMotion(motionDuration, extendIfRunning: true);
+                        }
+                        
+                        audioSource.clip = messageClip;
+                        audioSource.Play();
+                        yield return new WaitForSeconds(messageClip.length + 0.3f);
+                    }
+                    else if (enableDebugLog)
+                    {
+                        Debug.LogWarning($"[ScenarioRunner] 評価メッセージのクリップが取得できません: \"{evaluationEntry.text}\" (エントリID: {evaluationEntryId})");
+                    }
+                }
+                else if (enableDebugLog)
+                {
+                    Debug.LogWarning($"[ScenarioRunner] 評価メッセージエントリが見つかりません: {evaluationEntryId}");
+                }
+            }
+            
+            // 評価完了後、フィクスチャを一番上まで上げて10秒待機
+            if (cuePlayer != null)
+            {
+                if (enableDebugLog)
+                {
+                    Debug.Log("[ScenarioRunner] 評価完了。フィクスチャを一番上まで上げます。");
+                }
+                cuePlayer.ResetFixtureHeights();
+            }
+            
+            if (enableDebugLog)
+            {
+                Debug.Log("[ScenarioRunner] 10秒待機してからループを再開します。");
+            }
+            yield return new WaitForSeconds(10.0f);
+        }
+
+        /// <summary>
+        /// 音声待機中に、音声がvoiceDetectionThresholdより大きいときだけフィクスチャのライトを光らせる
+        /// </summary>
+        private IEnumerator ControlLightsDuringVoiceTrigger(AudioInputManager audioInputManager, KineticLightController controller)
+        {
+            if (audioInputManager == null || controller == null)
+            {
+                yield break;
+            }
+
+            int fixtureCount = controller.fixtures.Count;
+            if (fixtureCount == 0)
+            {
+                yield break;
+            }
+
+            float threshold = audioInputManager.voiceDetectionThreshold;
+            float updateInterval = 0.05f; // 50msごとに更新
+
+            if (enableDebugLog)
+            {
+                Debug.Log($"[ScenarioRunner] 音声待機中のライト制御開始 (閾値: {threshold:F3})");
+            }
+
+            while (true)
+            {
+                float currentRms = audioInputManager.CurrentRms;
+                bool isAboveThreshold = currentRms >= threshold;
+
+                if (isAboveThreshold)
+                {
+                    // 音声が閾値以上の場合、ライトを光らせる
+                    // 音量に応じて明るさを調整（RMS値に基づく）
+                    float brightness = Mathf.Clamp01(currentRms / 0.3f); // RMS 0.3を最大として正規化
+                    Color lightColor = new Color(brightness, brightness, brightness);
+
+                    for (int fixtureIndex = 0; fixtureIndex < fixtureCount; fixtureIndex++)
+                    {
+                        controller.SetFixtureColor(fixtureIndex, lightColor);
+                    }
+                    controller.Apply();
+                }
+                else
+                {
+                    // 音声が閾値未満の場合、ライトを消灯
+                    for (int fixtureIndex = 0; fixtureIndex < fixtureCount; fixtureIndex++)
+                    {
+                        controller.SetFixtureColor(fixtureIndex, Color.black);
+                    }
+                    controller.Apply();
+                }
+
+                yield return new WaitForSeconds(updateInterval);
+            }
+        }
+
+        /// <summary>
+        /// 録音中に、音声がvoiceDetectionThresholdより大きいときだけフィクスチャのライトをTTSモーションと同じように鮮やかに光らせる
+        /// 音がないときは消灯、音があるときはTTSモーションと同じ色相変化で連続点灯
+        /// </summary>
+        private IEnumerator ControlLightsDuringRecording(AudioInputManager audioInputManager, KineticLightController controller, float recordingDuration)
+        {
+            if (audioInputManager == null || controller == null || cuePlayer == null)
+            {
+                yield break;
+            }
+
+            int fixtureCount = controller.fixtures.Count;
+            if (fixtureCount == 0)
+            {
+                yield break;
+            }
+
+            float threshold = audioInputManager.voiceDetectionThreshold;
+            float updateInterval = 1f / cuePlayer.updateRate; // TTSモーションと同じ更新レート
+            float recordingStartTime = Time.time;
+            float elapsed = 0f;
+
+            // 各フィクスチャの初期位相を設定（TTSモーションと同じ）
+            float[] fixturePhases = new float[fixtureCount];
+            for (int i = 0; i < fixtureCount; i++)
+            {
+                fixturePhases[i] = (float)i / fixtureCount * 2f * Mathf.PI;
+            }
+
+            // TTSモーションと同じ色相変化速度
+            float colorSpeed = cuePlayer.ttsColorSpeed;
+
+            if (enableDebugLog)
+            {
+                Debug.Log($"[ScenarioRunner] 録音中のライト制御開始 (録音時間: {recordingDuration:F2}秒, 閾値: {threshold:F3})");
+            }
+
+            while (Time.time - recordingStartTime < recordingDuration)
+            {
+                elapsed = Time.time - recordingStartTime;
+                float currentRms = audioInputManager.CurrentRms;
+                bool isAboveThreshold = currentRms >= threshold;
+
+                if (isAboveThreshold)
+                {
+                    // 音声が閾値以上の場合、TTSモーションと同じように鮮やかに光らせる
+                    for (int fixtureIndex = 0; fixtureIndex < fixtureCount; fixtureIndex++)
+                    {
+                        // 色の波（色相を時間と位相に基づいて変化）- TTSモーションと同じ
+                        float colorPhase = elapsed * colorSpeed + fixturePhases[fixtureIndex] / (2f * Mathf.PI);
+                        float hue = (colorPhase % 1f + 1f) % 1f; // 0-1の範囲に正規化
+                        Color color = Color.HSVToRGB(hue, 1.0f, 1.0f); // 鮮やかな色（彩度1.0、明度1.0）
+                        controller.SetFixtureColor(fixtureIndex, color);
+                    }
+                    controller.Apply();
+                }
+                else
+                {
+                    // 音声が閾値未満の場合、消灯（点滅しない）
+                    for (int fixtureIndex = 0; fixtureIndex < fixtureCount; fixtureIndex++)
+                    {
+                        controller.SetFixtureColor(fixtureIndex, Color.black);
+                    }
+                    controller.Apply();
+                }
+
+                yield return new WaitForSeconds(updateInterval);
+            }
+
+            // 録音終了時にライトを消灯
+            for (int fixtureIndex = 0; fixtureIndex < fixtureCount; fixtureIndex++)
+            {
+                controller.SetFixtureColor(fixtureIndex, Color.black);
+            }
+            controller.Apply();
+
+            if (enableDebugLog)
+            {
+                Debug.Log("[ScenarioRunner] 録音中のライト制御終了");
             }
         }
     }

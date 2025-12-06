@@ -47,6 +47,7 @@ namespace Encounter.Scenario
         public float speedScale = 1.0f; // 発話速度（1.0=通常、0.5=半分の速度、2.0=2倍の速度）
         public string labFilePath; // .labファイルのパス（Resources相対、例: "Lab/001_ずんだもん（ノーマル）_無名トラック"）
         public SingingNote[] singingNotes; // 歌声合成用のノート配列（type="singing"のとき使用）
+        public int speakerId = -1; // 話者ID（-1の場合はTTSServiceのデフォルトspeakerIdを使用）
     }
 
     [Serializable]

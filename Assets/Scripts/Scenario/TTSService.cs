@@ -118,14 +118,14 @@ namespace Encounter.Scenario
 
             foreach (var entry in ttsEntries)
             {
-                // キャッシュキーは text + pitchNotes + speedScale + labFilePath の組み合わせ
-                string cacheKey = GetCacheKey(entry.text, entry.pitchNotes, entry.speedScale, entry.labFilePath);
+                // キャッシュキーは text + pitchNotes + speedScale + labFilePath + speakerId の組み合わせ
+                string cacheKey = GetCacheKey(entry.text, entry.pitchNotes, entry.speedScale, entry.labFilePath, entry.speakerId);
                 if (_cache.ContainsKey(cacheKey))
                 {
                     continue;
                 }
 
-                yield return StartCoroutine(SynthesizeAndCache(entry.text, entry.pitchNotes, entry.speedScale, entry.labFilePath));
+                yield return StartCoroutine(SynthesizeAndCache(entry.text, entry.pitchNotes, entry.speedScale, entry.labFilePath, entry.speakerId));
             }
 
             foreach (var entry in singingEntries)
@@ -145,24 +145,26 @@ namespace Encounter.Scenario
             }
         }
 
-        private IEnumerator SynthesizeAndCache(string text, string[] pitchNotes = null, float speedScale = 1.0f, string labFilePath = null)
+        private IEnumerator SynthesizeAndCache(string text, string[] pitchNotes = null, float speedScale = 1.0f, string labFilePath = null, int entrySpeakerId = -1)
         {
-            string cacheKey = GetCacheKey(text, pitchNotes, speedScale, labFilePath);
+            // エントリのspeakerIdが指定されている場合はそれを使用、そうでなければデフォルトのspeakerIdを使用
+            int actualSpeakerId = entrySpeakerId >= 0 ? entrySpeakerId : speakerId;
+            string cacheKey = GetCacheKey(text, pitchNotes, speedScale, labFilePath, entrySpeakerId);
             
             if (enableDebugLog)
             {
                 if (pitchNotes != null && pitchNotes.Length > 0)
                 {
-                    Debug.Log($"[TTSService] 音声合成開始（音程指定あり）: \"{text}\" 音程: [{string.Join(", ", pitchNotes)}] (話者ID: {speakerId})");
+                    Debug.Log($"[TTSService] 音声合成開始（音程指定あり）: \"{text}\" 音程: [{string.Join(", ", pitchNotes)}] (話者ID: {actualSpeakerId})");
                 }
                 else
                 {
-                    Debug.Log($"[TTSService] 音声合成開始: \"{text}\" (話者ID: {speakerId})");
+                    Debug.Log($"[TTSService] 音声合成開始: \"{text}\" (話者ID: {actualSpeakerId})");
                 }
             }
             
             // Step 1: audio_query を取得
-            string queryUrl = $"{engineBaseUrl}/audio_query?text={UnityWebRequest.EscapeURL(text)}&speaker={speakerId}";
+            string queryUrl = $"{engineBaseUrl}/audio_query?text={UnityWebRequest.EscapeURL(text)}&speaker={actualSpeakerId}";
             
             if (enableDebugLog)
             {
@@ -226,7 +228,7 @@ namespace Encounter.Scenario
                 }
 
                 // Step 2: synthesis で音声を生成
-                string synthesisUrl = $"{engineBaseUrl}/synthesis?speaker={speakerId}";
+                string synthesisUrl = $"{engineBaseUrl}/synthesis?speaker={actualSpeakerId}";
                 
                 if (enableDebugLog)
                 {
@@ -384,9 +386,9 @@ namespace Encounter.Scenario
             }
         }
 
-        public AudioClip GetCachedClip(string text, string[] pitchNotes = null, float speedScale = 1.0f, string labFilePath = null)
+        public AudioClip GetCachedClip(string text, string[] pitchNotes = null, float speedScale = 1.0f, string labFilePath = null, int entrySpeakerId = -1)
         {
-            string cacheKey = GetCacheKey(text, pitchNotes, speedScale, labFilePath);
+            string cacheKey = GetCacheKey(text, pitchNotes, speedScale, labFilePath, entrySpeakerId);
             _cache.TryGetValue(cacheKey, out var clip);
             return clip;
         }
@@ -417,10 +419,12 @@ namespace Encounter.Scenario
             return clip;
         }
 
-        private string GetCacheKey(string text, string[] pitchNotes, float speedScale = 1.0f, string labFilePath = null)
+        private string GetCacheKey(string text, string[] pitchNotes = null, float speedScale = 1.0f, string labFilePath = null, int entrySpeakerId = -1)
         {
+            // エントリのspeakerIdが指定されている場合はそれを使用、そうでなければデフォルトのspeakerIdを使用
+            int actualSpeakerId = entrySpeakerId >= 0 ? entrySpeakerId : speakerId;
             // キャッシュキーに話者IDを含めることで、話者を変更した際に再生成されるようにする
-            List<string> keyParts = new List<string> { $"spd:{speakerId}", text };
+            List<string> keyParts = new List<string> { $"spd:{actualSpeakerId}", text };
             if (pitchNotes != null && pitchNotes.Length > 0)
             {
                 keyParts.Add($"pitch:{string.Join(",", pitchNotes)}");

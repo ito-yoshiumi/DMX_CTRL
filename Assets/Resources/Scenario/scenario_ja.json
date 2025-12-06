@@ -184,6 +184,27 @@
       "mixReferenceEntryId": "melody_voicevox"
     },
     {
+      "id": "harmony_evaluation_excellent",
+      "type": "tts",
+      "text": "すばらしいハーモニー！みんなの声が美しく響き合っているね。いっしょにうたってくれてありがとう！またね！",
+      "waitAfter": 0.3,
+      "speakerId": 75
+    },
+    {
+      "id": "harmony_evaluation_good",
+      "type": "tts",
+      "text": "いい感じだね！それぞれの声の個性が光っているよ。いっしょにうたってくれてありがとう！またね！",
+      "waitAfter": 0.3,
+      "speakerId": 5
+    },
+    {
+      "id": "harmony_evaluation_nice",
+      "type": "tts",
+      "text": "声が聞こえてうれしい！それぞれの声に個性があって素敵だねっ！いっしょにうたってくれてありがとう！またね！",
+      "waitAfter": 0.3,
+      "speakerId": 7
+    },
+    {
       "id": "timeout_1",
       "type": "tts",
       "text": "だれもいないのかな？もうすこしマイクの近くで大きい声でうたってみて。",

@@ -29,11 +29,17 @@ namespace Encounter.Scenario
         public bool enableDebugLog = true;
 
         private readonly List<AudioClip> _recordedClips = new();
+        private readonly List<HarmonyEvaluator.RecordingEvaluation> _recordingEvaluations = new();
         private Coroutine _voiceTriggeredRecordingCoroutine;
 
         public IReadOnlyList<AudioClip> RecordedClips => _recordedClips;
+        public IReadOnlyList<HarmonyEvaluator.RecordingEvaluation> RecordingEvaluations => _recordingEvaluations;
 
-        public void ClearRecordings() => _recordedClips.Clear();
+        public void ClearRecordings()
+        {
+            _recordedClips.Clear();
+            _recordingEvaluations.Clear();
+        }
 
         void Start()
         {
@@ -129,9 +135,18 @@ namespace Encounter.Scenario
 
                 _recordedClips.Add(recordedClip);
 
+                // 評価データを生成
+                var evaluation = HarmonyEvaluator.EvaluateRecording(recordedClip, -1, audioInputManager);
+                if (_recordingEvaluations.Count >= Mathf.Max(1, maxRecordings))
+                {
+                    _recordingEvaluations.RemoveAt(0);
+                }
+                _recordingEvaluations.Add(evaluation);
+
                 if (enableDebugLog)
                 {
                     Debug.Log($"[ParticipantRecordingManager] 音声検出録音を追加: {_recordedClips.Count}/{maxRecordings} (長さ: {recordedClip.length:F2}秒)");
+                    Debug.Log($"[ParticipantRecordingManager] 評価データ: ピッチ={evaluation.averagePitchHz:F1}Hz, 音量={evaluation.averageVolume:F3}, 安定性={evaluation.pitchStability:F2}");
                 }
             }
         }
@@ -162,13 +177,68 @@ namespace Encounter.Scenario
 
             _recordedClips.Add(recordedClip);
 
+            // 評価データを生成
+            var evaluation = HarmonyEvaluator.EvaluateRecording(recordedClip, -1, audioInputManager);
+            if (_recordingEvaluations.Count >= Mathf.Max(1, maxRecordings))
+            {
+                _recordingEvaluations.RemoveAt(0);
+            }
+            _recordingEvaluations.Add(evaluation);
+
             if (enableDebugLog)
             {
                 Debug.Log($"[ParticipantRecordingManager] 録音を追加: {_recordedClips.Count}/{maxRecordings}");
+                Debug.Log($"[ParticipantRecordingManager] 評価データ: ピッチ={evaluation.averagePitchHz:F1}Hz, 音量={evaluation.averageVolume:F3}, 安定性={evaluation.pitchStability:F2}");
+            }
+        }
+
+        /// <summary>
+        /// 録音時に目標MIDIノートを指定して評価データを生成
+        /// </summary>
+        public IEnumerator RecordAsyncWithEvaluation(float durationSeconds, int targetMidiNote = -1)
+        {
+            if (audioInputManager == null)
+            {
+                Debug.LogWarning("[ParticipantRecordingManager] AudioInputManager が設定されていません。");
+                yield break;
+            }
+
+            AudioClip recordedClip = null;
+            yield return audioInputManager.RecordClipCoroutine(
+                Mathf.Max(0.1f, durationSeconds),
+                clip => recordedClip = clip);
+
+            if (recordedClip == null)
+            {
+                Debug.LogWarning("[ParticipantRecordingManager] 録音に失敗しました。");
+                yield break;
+            }
+
+            if (_recordedClips.Count >= Mathf.Max(1, maxRecordings))
+            {
+                _recordedClips.RemoveAt(0);
+                _recordingEvaluations.RemoveAt(0);
+            }
+
+            _recordedClips.Add(recordedClip);
+
+            // 目標MIDIノートを指定して評価データを生成
+            var evaluation = HarmonyEvaluator.EvaluateRecording(recordedClip, targetMidiNote, audioInputManager);
+            _recordingEvaluations.Add(evaluation);
+
+            if (enableDebugLog)
+            {
+                Debug.Log($"[ParticipantRecordingManager] 録音を追加: {_recordedClips.Count}/{maxRecordings} (目標MIDIノート: {targetMidiNote})");
+                Debug.Log($"[ParticipantRecordingManager] 評価データ: ピッチ={evaluation.averagePitchHz:F1}Hz, 音量={evaluation.averageVolume:F3}, 安定性={evaluation.pitchStability:F2}");
             }
         }
 
         public IEnumerator RecordWithTriggerAsync(float durationSeconds, float timeoutSeconds, System.Action<bool> onResult = null)
+        {
+            yield return RecordWithTriggerAsyncWithEvaluation(durationSeconds, timeoutSeconds, -1, onResult);
+        }
+
+        public IEnumerator RecordWithTriggerAsyncWithEvaluation(float durationSeconds, float timeoutSeconds, int targetMidiNote, System.Action<bool> onResult = null, System.Action onRecordingStarted = null)
         {
             if (audioInputManager == null)
             {
@@ -179,7 +249,7 @@ namespace Encounter.Scenario
 
             if (enableDebugLog)
             {
-                Debug.Log($"[ParticipantRecordingManager] 音声検出待機中... (タイムアウト: {timeoutSeconds:F1}秒)");
+                Debug.Log($"[ParticipantRecordingManager] 音声検出待機中... (タイムアウト: {timeoutSeconds:F1}秒, 目標MIDIノート: {targetMidiNote})");
             }
 
             bool triggered = false;
@@ -216,8 +286,18 @@ namespace Encounter.Scenario
                  if (enableDebugLog) Debug.Log("[ParticipantRecordingManager] 音声を検出しました。録音を開始します。");
             }
 
-            // 録音実行
-            yield return RecordAsync(durationSeconds);
+            // 録音開始を通知
+            onRecordingStarted?.Invoke();
+
+            // 録音実行（目標MIDIノートを指定）
+            if (targetMidiNote >= 0)
+            {
+                yield return RecordAsyncWithEvaluation(durationSeconds, targetMidiNote);
+            }
+            else
+            {
+                yield return RecordAsync(durationSeconds);
+            }
             onResult?.Invoke(true);
         }
 
