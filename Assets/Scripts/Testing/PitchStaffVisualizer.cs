@@ -14,10 +14,6 @@ namespace Encounter.Testing
         [Header("References")]
         public AudioInputManager audioInputManager;
 
-        [Header("Staff Configuration")]
-        [Tooltip("5つのSquareスプライト（低音→高音の順）")]
-        public SpriteRenderer[] squares = new SpriteRenderer[5];
-
         [Header("Position Settings")]
         [Tooltip("五線譜の上段Y座標（初期位置、約3メートル）")]
         public float staffTopY = 3f;
@@ -40,7 +36,7 @@ namespace Encounter.Testing
         public VolumeToColorMapper volumeMapper;
 
         [Header("DMX Output")]
-        [Tooltip("KineticLightController（未設定なら自動検出）")]
+        [Tooltip("KineticLightController（必須。Squareオブジェクトはここから取得されます）")]
         public KineticLightController kineticLightController;
         [Tooltip("ピッチに応じた高さをDMX機器にも送信するか")]
         public bool sendHeightToDmx = true;
@@ -77,6 +73,7 @@ namespace Encounter.Testing
 
         private PitchToHeightMapper[] _pitchMappers = new PitchToHeightMapper[5];
         private Vector3[] _initialPositions = new Vector3[5];
+        private SpriteRenderer[] _squares; // KineticLightControllerから取得したSquare
         private float _currentPitch = 0f;
         private float _currentRms = 0f;
 
@@ -93,15 +90,43 @@ namespace Encounter.Testing
                 }
             }
 
-            if (kineticLightController == null && sendHeightToDmx)
+            // KineticLightControllerを検索（必須）
+            if (kineticLightController == null)
             {
                 kineticLightController = FindFirstObjectByType<KineticLightController>();
-                if (kineticLightController == null)
+            }
+
+            if (kineticLightController == null)
+            {
+                Debug.LogError("[PitchStaffVisualizer] KineticLightControllerが見つかりません。Squareオブジェクトを取得できません。");
+                return;
+            }
+
+            // KineticLightControllerのfixtureObjectsからSquareを取得
+            if (kineticLightController.fixtureObjects == null || kineticLightController.fixtureObjects.Count == 0)
+            {
+                Debug.LogError("[PitchStaffVisualizer] KineticLightControllerのfixtureObjectsが設定されていません。");
+                return;
+            }
+
+            // fixtureObjectsからSpriteRendererを取得
+            int fixtureCount = kineticLightController.fixtureObjects.Count;
+            _squares = new SpriteRenderer[fixtureCount];
+            for (int i = 0; i < fixtureCount && i < 5; i++)
+            {
+                if (kineticLightController.fixtureObjects[i] != null)
                 {
-                    Debug.LogWarning("[PitchStaffVisualizer] KineticLightControllerが見つかりません。DMX送信をスキップします。");
-                    sendHeightToDmx = false;
-                    sendColorToDmx = false;
+                    _squares[i] = kineticLightController.fixtureObjects[i].GetComponent<SpriteRenderer>();
+                    if (_squares[i] == null)
+                    {
+                        Debug.LogWarning($"[PitchStaffVisualizer] fixtureObjects[{i}]にSpriteRendererコンポーネントがありません。");
+                    }
                 }
+            }
+
+            if (enableDebugLog)
+            {
+                Debug.Log($"[PitchStaffVisualizer] KineticLightControllerから{fixtureCount}個のSquareを取得しました。");
             }
 
             if (enableDebugLog)
@@ -121,23 +146,23 @@ namespace Encounter.Testing
 
             // 各Squareの初期位置とサイズを設定
             int squareCount = 0;
-            for (int i = 0; i < squares.Length && i < 5; i++)
+            for (int i = 0; i < _squares.Length && i < 5; i++)
             {
-                if (squares[i] != null)
+                if (_squares[i] != null)
                 {
                     squareCount++;
                     float x = centerX + (i - 2) * squareSpacing; // -2, -1, 0, 1, 2の位置
                     _initialPositions[i] = new Vector3(x, staffTopY, 0f);
-                    squares[i].transform.position = _initialPositions[i];
+                    _squares[i].transform.position = _initialPositions[i];
                     
                     // Squareのサイズを設定
-                    squares[i].transform.localScale = new Vector3(squareSize, squareSize, 1f);
+                    _squares[i].transform.localScale = new Vector3(squareSize, squareSize, 1f);
 
                     // 各SquareにPitchToHeightMapperを追加
-                    _pitchMappers[i] = squares[i].gameObject.GetComponent<PitchToHeightMapper>();
+                    _pitchMappers[i] = _squares[i].gameObject.GetComponent<PitchToHeightMapper>();
                     if (_pitchMappers[i] == null)
                     {
-                        _pitchMappers[i] = squares[i].gameObject.AddComponent<PitchToHeightMapper>();
+                        _pitchMappers[i] = _squares[i].gameObject.AddComponent<PitchToHeightMapper>();
                     }
                     
                     // 既存のコンポーネントの設定を更新
@@ -221,12 +246,14 @@ namespace Encounter.Testing
 
         private void OnRmsReceived(float rms)
         {
+            if (!enabled) return; // 無効化されている場合は処理をスキップ
             _currentRms = rms;
             UpdateColors();
         }
 
         private void OnPitchReceived(float pitchHz)
         {
+            if (!enabled) return; // 無効化されている場合は処理をスキップ
             _currentPitch = pitchHz;
             // 音が無いときでも、最後のDMX値に向かって移動し続けるようにUpdatePositions()を呼び出す
             UpdatePositions();
@@ -240,11 +267,13 @@ namespace Encounter.Testing
 
         private void UpdatePositions()
         {
+            if (_squares == null) return;
+
             // グラフィックイコライザー風: 各Squareが自分の音域範囲にのみ反応
             // 中央値でDMX最大、範囲端で0、範囲外で0
-            for (int i = 0; i < squares.Length && i < 5; i++)
+            for (int i = 0; i < _squares.Length && i < 5; i++)
             {
-                if (squares[i] == null || _pitchMappers[i] == null) continue;
+                if (_squares[i] == null || _pitchMappers[i] == null) continue;
 
                 // 各Squareの音域範囲を取得
                 float minHz = i < pitchMinHz.Length ? pitchMinHz[i] : 80f;
@@ -289,7 +318,7 @@ namespace Encounter.Testing
                 // X座標は初期位置から取得、Y座標は計算した値を使用
                 float x = centerX + (i - 2) * squareSpacing;
                 Vector3 pos = new Vector3(x, y, 0f);
-                squares[i].transform.position = pos;
+                _squares[i].transform.position = pos;
 
                 // デバッグログ（頻繁に出力されないように）
                 if (enableDebugLog && Time.frameCount % 60 == 0 && i == 0) // 約1秒に1回、最初のSquareのみ
@@ -311,20 +340,38 @@ namespace Encounter.Testing
 
         private void UpdateColors()
         {
-            if (volumeMapper == null) return;
+            if (volumeMapper == null || _squares == null) return;
 
-            // 音量に応じて色を変更（全Square同じ色）
-            Color color = volumeMapper.MapRmsToColor(_currentRms);
-
-            for (int i = 0; i < squares.Length && i < 5; i++)
+            // 各Squareが自分の音域範囲内にある場合のみ光らせる
+            for (int i = 0; i < _squares.Length && i < 5; i++)
             {
-                if (squares[i] != null)
+                if (_squares[i] == null) continue;
+
+                // 各Squareの音域範囲を取得
+                float minHz = i < pitchMinHz.Length ? pitchMinHz[i] : 80f;
+                float maxHz = i < pitchMaxHz.Length ? pitchMaxHz[i] : 350f;
+                float centerHz = (minHz + maxHz) * 0.5f; // 中央値
+                float range = maxHz - minHz; // 範囲の幅
+
+                Color color = Color.black; // デフォルトは消灯
+
+                // ピッチが範囲内にある場合のみ光らせる
+                if (_currentPitch > 0f && _currentPitch >= minHz && _currentPitch <= maxHz)
                 {
-                    squares[i].color = color;
-                    if (sendColorToDmx && kineticLightController != null)
-                    {
-                        kineticLightController.SetFixtureColor(i, color);
-                    }
+                    // 音量に応じた基本色を取得（最大明るさで）
+                    Color baseColor = volumeMapper.MapRmsToColor(_currentRms);
+                    
+                    // 基本最大の明るさで色味が変わる（常に最大明るさ）
+                    color = baseColor;
+                }
+
+                // Squareの色を設定
+                _squares[i].color = color;
+                
+                // DMXにも送信
+                if (sendColorToDmx && kineticLightController != null)
+                {
+                    kineticLightController.SetFixtureColor(i, color);
                 }
             }
 

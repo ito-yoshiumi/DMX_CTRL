@@ -34,9 +34,9 @@ namespace Encounter.DMX
         public bool simulateColor = true;
 
         [Header("DMX Debug")]
-        [Tooltip("DMX送信の詳細ログを表示するか")]
+        [Tooltip("DMX送信の詳細ログを表示するか（問題の特定時のみ有効化を推奨。頻繁にログが出力されます）")]
         public bool enableDmxDebugLog = false;
-        [Tooltip("DMX送信のログ間隔（秒）")]
+        [Tooltip("DMX送信のログ間隔（秒）。0.1秒にすると非常に多くのログが出力されます")]
         public float dmxLogInterval = 1.0f;
 
         private byte[] _dmx = new byte[512];
@@ -114,45 +114,108 @@ namespace Encounter.DMX
                 return;
             }
             var f = fixtures[index];
-            int r = f.startAddress + f.redCh - 2;
-            int g = f.startAddress + f.greenCh - 2;
-            int b = f.startAddress + f.blueCh - 2;
-            Write(r, (byte)Mathf.RoundToInt(color.r * 255f));
-            Write(g, (byte)Mathf.RoundToInt(color.g * 255f));
-            Write(b, (byte)Mathf.RoundToInt(color.b * 255f));
+            int rAddr = f.startAddress + f.redCh - 2;
+            int gAddr = f.startAddress + f.greenCh - 2;
+            int bAddr = f.startAddress + f.blueCh - 2;
+            
+            byte rVal = (byte)Mathf.RoundToInt(color.r * 255f);
+            byte gVal = (byte)Mathf.RoundToInt(color.g * 255f);
+            byte bVal = (byte)Mathf.RoundToInt(color.b * 255f);
+            
+            Write(rAddr, rVal);
+            Write(gAddr, gVal);
+            Write(bAddr, bVal);
+            
+            // ApplyFixtureDefaultsは色には影響しない（ディマーとストロボのみ）
             ApplyFixtureDefaults(f);
+            
+            // デバッグログ（詳細ログが有効な場合のみ）
+            if (enableDmxDebugLog)
+            {
+                Debug.Log($"[KineticLightController] SetFixtureColor: Fixture {index}, Color: {color}, RGB: ({rVal}, {gVal}, {bVal}), Address: R={rAddr} G={gAddr} B={bAddr}");
+            }
 
+            _setColorCallCount++;
+            
             // Simulation
             if (simulateColor)
             {
                 if (fixtureObjects == null || index >= fixtureObjects.Count)
                 {
-                    // デバッグログは頻繁に出ると煩わしいので、最初の1回だけ
-                    if (Time.frameCount % 60 == 0)
+                    // 最初の数回だけ警告を出力（ログが多すぎないように）
+                    if (_setColorCallCount <= 5 || _setColorCallCount % 100 == 0)
                     {
-                        Debug.LogWarning($"[KineticLightController] SetFixtureColor: fixtureObjects[{index}] が設定されていません (Count: {fixtureObjects?.Count ?? 0})");
+                        Debug.LogWarning($"[KineticLightController] SetFixtureColor: fixtureObjects[{index}] が設定されていません (Count: {fixtureObjects?.Count ?? 0}, simulateColor: {simulateColor})。Squareの色は更新されません。");
                     }
                 }
                 else if (fixtureObjects[index] != null)
                 {
-                    var renderer = fixtureObjects[index].GetComponent<Renderer>();
-                    if (renderer != null)
+                    // SpriteRendererを先にチェック（PitchStaffVisualizerのSquareはSpriteRenderer）
+                    var spriteRenderer = fixtureObjects[index].GetComponent<SpriteRenderer>();
+                    if (spriteRenderer != null)
                     {
-                        renderer.material.color = color;
-                        // Emissionも設定すると光って見える
-                        renderer.material.SetColor("_EmissionColor", color);
-                        if (color.grayscale > 0.1f)
+                        spriteRenderer.color = color;
+                        // デバッグログ（最初の5回または詳細ログが有効な場合）
+                        if (enableDmxDebugLog || _setColorCallCount <= 5)
                         {
-                             renderer.material.EnableKeyword("_EMISSION");
+                            Debug.Log($"[KineticLightController] SetFixtureColor: Fixture {index} のSpriteRendererに色を適用: {color} (RGB: {color.r:F2}, {color.g:F2}, {color.b:F2}), GameObject: {fixtureObjects[index].name}");
                         }
                     }
                     else
                     {
-                        if (Time.frameCount % 60 == 0)
+                        // 通常のRendererもチェック
+                        var renderer = fixtureObjects[index].GetComponent<Renderer>();
+                        if (renderer != null)
                         {
-                            Debug.LogWarning($"[KineticLightController] SetFixtureColor: fixtureObjects[{index}] に Renderer コンポーネントがありません");
+                            // マテリアルのインスタンスを作成（共有マテリアルを変更しない）
+                            if (renderer.material == null)
+                            {
+                                Debug.LogError($"[KineticLightController] SetFixtureColor: Fixture {index} のRendererにマテリアルがありません");
+                            }
+                            else
+                            {
+                                renderer.material.color = color;
+                                // Emissionも設定すると光って見える
+                                renderer.material.SetColor("_EmissionColor", color);
+                                if (color.grayscale > 0.1f)
+                                {
+                                    renderer.material.EnableKeyword("_EMISSION");
+                                }
+                                else
+                                {
+                                    renderer.material.DisableKeyword("_EMISSION");
+                                }
+                                
+                                // デバッグログ（詳細ログが有効な場合のみ）
+                                if (enableDmxDebugLog || _setColorCallCount <= 5)
+                                {
+                                    Debug.Log($"[KineticLightController] SetFixtureColor: Fixture {index} のRendererに色を適用: {color}");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            if (_setColorCallCount <= 5 || _setColorCallCount % 100 == 0)
+                            {
+                                Debug.LogWarning($"[KineticLightController] SetFixtureColor: fixtureObjects[{index}] に Renderer または SpriteRenderer コンポーネントがありません");
+                            }
                         }
                     }
+                }
+                else
+                {
+                    if (_setColorCallCount <= 5 || _setColorCallCount % 100 == 0)
+                    {
+                        Debug.LogWarning($"[KineticLightController] SetFixtureColor: fixtureObjects[{index}] が null です");
+                    }
+                }
+            }
+            else
+            {
+                // simulateColorが無効な場合のログ（最初の1回だけ）
+                if (_setColorCallCount == 1)
+                {
+                    Debug.LogWarning($"[KineticLightController] SetFixtureColor: simulateColorが無効です。Squareの色は更新されません。");
                 }
             }
         }
@@ -160,6 +223,7 @@ namespace Encounter.DMX
         private int _applyCount = 0;
         private float _lastApplyLogTime = 0f;
         private const float APPLY_LOG_INTERVAL = 5f;
+        private int _setColorCallCount = 0; // SetFixtureColorの呼び出し回数
 
         public void Apply()
         {
@@ -171,13 +235,16 @@ namespace Encounter.DMX
             
             _applyCount++;
             float currentTime = Time.realtimeSinceStartup;
+            
+            // 通常のログ（5秒ごと）
             if (currentTime - _lastApplyLogTime > APPLY_LOG_INTERVAL)
             {
                 Debug.Log($"[KineticLightController] Apply呼び出し: {_applyCount}回目");
                 _lastApplyLogTime = currentTime;
             }
             
-            // DMX送信の詳細ログ
+            // DMX送信の詳細ログ（enableDmxDebugLogが有効で、指定間隔ごと）
+            // 注意: このログは頻繁に出力されるため、問題の特定時のみ有効化を推奨
             if (enableDmxDebugLog && currentTime - _lastDmxLogTime > dmxLogInterval)
             {
                 LogDmxValues();
@@ -197,27 +264,27 @@ namespace Encounter.DMX
             for (int i = 0; i < fixtures.Count; i++)
             {
                 var fixture = fixtures[i];
-                int addr = fixture.startAddress - 1; // 0-based address
+                // SetFixtureColorと同じ計算方法を使用
+                int rAddr = fixture.startAddress + fixture.redCh - 2;
+                int gAddr = fixture.startAddress + fixture.greenCh - 2;
+                int bAddr = fixture.startAddress + fixture.blueCh - 2;
+                int hAddr = fixture.startAddress + fixture.heightCh - 2;
                 
-                if (addr >= 0 && addr < _dmx.Length)
+                if (rAddr >= 0 && rAddr < _dmx.Length && 
+                    gAddr >= 0 && gAddr < _dmx.Length && 
+                    bAddr >= 0 && bAddr < _dmx.Length && 
+                    hAddr >= 0 && hAddr < _dmx.Length)
                 {
-                    int r = addr + fixture.redCh - 1;
-                    int g = addr + fixture.greenCh - 1;
-                    int b = addr + fixture.blueCh - 1;
-                    int h = addr + fixture.heightCh - 1;
+                    byte rVal = _dmx[rAddr];
+                    byte gVal = _dmx[gAddr];
+                    byte bVal = _dmx[bAddr];
+                    byte hVal = _dmx[hAddr];
                     
-                    if (r < _dmx.Length && g < _dmx.Length && b < _dmx.Length && h < _dmx.Length)
+                    // 高さが0でない場合も表示（移動中など）
+                    if (rVal > 0 || gVal > 0 || bVal > 0 || hVal > 0)
                     {
-                        byte rVal = _dmx[r];
-                        byte gVal = _dmx[g];
-                        byte bVal = _dmx[b];
-                        byte hVal = _dmx[h];
-                        
-                        if (rVal > 0 || gVal > 0 || bVal > 0 || hVal > 0)
-                        {
-                            hasNonZero = true;
-                            log += $"F{i}(R:{rVal} G:{gVal} B:{bVal} H:{hVal}) ";
-                        }
+                        hasNonZero = true;
+                        log += $"F{i}(R:{rVal} G:{gVal} B:{bVal} H:{hVal}) ";
                     }
                 }
             }
@@ -287,49 +354,32 @@ namespace Encounter.DMX
             }
 
             var fixture = fixtures[index];
-            int addr = fixture.startAddress - 1; // 0-based address
-
-            if (addr < 0 || addr >= _dmx.Length)
-            {
-                return (0, 0, 0, 0);
-            }
+            // SetFixtureColorと同じ計算方法を使用
+            int rAddr = fixture.startAddress + fixture.redCh - 2;
+            int gAddr = fixture.startAddress + fixture.greenCh - 2;
+            int bAddr = fixture.startAddress + fixture.blueCh - 2;
+            int hAddr = fixture.startAddress + fixture.heightCh - 2;
 
             int r = 0, g = 0, b = 0, h = 0;
 
-            if (fixture.redCh > 0)
+            if (rAddr >= 0 && rAddr < _dmx.Length)
             {
-                int rAddr = addr + fixture.redCh - 1;
-                if (rAddr >= 0 && rAddr < _dmx.Length)
-                {
-                    r = _dmx[rAddr];
-                }
+                r = _dmx[rAddr];
             }
 
-            if (fixture.greenCh > 0)
+            if (gAddr >= 0 && gAddr < _dmx.Length)
             {
-                int gAddr = addr + fixture.greenCh - 1;
-                if (gAddr >= 0 && gAddr < _dmx.Length)
-                {
-                    g = _dmx[gAddr];
-                }
+                g = _dmx[gAddr];
             }
 
-            if (fixture.blueCh > 0)
+            if (bAddr >= 0 && bAddr < _dmx.Length)
             {
-                int bAddr = addr + fixture.blueCh - 1;
-                if (bAddr >= 0 && bAddr < _dmx.Length)
-                {
-                    b = _dmx[bAddr];
-                }
+                b = _dmx[bAddr];
             }
 
-            if (fixture.heightCh > 0)
+            if (hAddr >= 0 && hAddr < _dmx.Length)
             {
-                int hAddr = addr + fixture.heightCh - 1;
-                if (hAddr >= 0 && hAddr < _dmx.Length)
-                {
-                    h = _dmx[hAddr];
-                }
+                h = _dmx[hAddr];
             }
 
             return (r, g, b, h);

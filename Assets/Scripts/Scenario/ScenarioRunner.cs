@@ -241,6 +241,27 @@ namespace Encounter.Scenario
                         v.sendHeightToDmx = false;
                         v.sendColorToDmx = false;
                         
+                        // Squareの色をリセット（黒に設定）して、KineticLightControllerの色設定が反映されるようにする
+                        // KineticLightControllerのfixtureObjectsからSquareを取得
+                        if (v.kineticLightController != null && v.kineticLightController.fixtureObjects != null)
+                        {
+                            for (int i = 0; i < v.kineticLightController.fixtureObjects.Count; i++)
+                            {
+                                if (v.kineticLightController.fixtureObjects[i] != null)
+                                {
+                                    var spriteRenderer = v.kineticLightController.fixtureObjects[i].GetComponent<SpriteRenderer>();
+                                    if (spriteRenderer != null)
+                                    {
+                                        spriteRenderer.color = Color.black;
+                                        if (enableDebugLog)
+                                        {
+                                            Debug.Log($"[ScenarioRunner] PitchStaffVisualizer の Square[{i}] の色をリセットしました。");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
                         // コンポーネント自体も無効化
                         v.enabled = false;
                         

@@ -444,13 +444,21 @@ namespace Encounter.Scenario
 
                 // 点灯（明るく発光）
                 controller.SetFixtureColor(timing.fixtureIndex, color);
-                controller.Apply();
                 
-                // デバッグ: 実際にDMXに送信された値を確認
+                // SetFixtureColor直後にDMX値を確認（デバッグ時のみ）
                 if (enableDebugLog)
                 {
-                    var dmxValues = controller.GetFixtureDmxValues(timing.fixtureIndex);
-                    Debug.Log($"[CuePlayer] DMX送信確認: Fixture {timing.fixtureIndex}, R:{dmxValues.r} G:{dmxValues.g} B:{dmxValues.b}");
+                    var dmxValuesBeforeApply = controller.GetFixtureDmxValues(timing.fixtureIndex);
+                    Debug.Log($"[CuePlayer] 点灯処理: '{timing.note.lyric}' Fixture {timing.fixtureIndex}, Color: {color}, DMX値(Apply前): R:{dmxValuesBeforeApply.r} G:{dmxValuesBeforeApply.g} B:{dmxValuesBeforeApply.b}");
+                }
+                
+                controller.Apply();
+                
+                // Apply直後にDMX値を確認（デバッグ時のみ）
+                if (enableDebugLog)
+                {
+                    var dmxValuesAfterApply = controller.GetFixtureDmxValues(timing.fixtureIndex);
+                    Debug.Log($"[CuePlayer] Apply直後: Fixture {timing.fixtureIndex}, DMX値: R:{dmxValuesAfterApply.r} G:{dmxValuesAfterApply.g} B:{dmxValuesAfterApply.b}");
                 }
 
                 // 音の長さだけ待機
