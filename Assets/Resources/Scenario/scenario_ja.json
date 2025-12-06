@@ -4,7 +4,7 @@
       "id": "melody_voicevox",
       "type": "singing",
       "text": "こんにちはー",
-      "dmxCue": "Cues/5note_light",
+      "dmxCue": "DynamicNotes",
       "waitAfter": 0.5,
       "singingNotes": [
         { "key": -1, "frame_length": 15, "lyric": "" },

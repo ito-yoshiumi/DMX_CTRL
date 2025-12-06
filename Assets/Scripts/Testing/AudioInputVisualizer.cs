@@ -85,6 +85,7 @@ namespace Encounter.Testing
 
         private void OnRmsReceived(float rms)
         {
+            if (!enabled) return; // 無効化されている場合は処理をスキップ
             if (targetSprite == null || volumeMapper == null) return;
 
             // 音量に応じて色を変更
@@ -100,6 +101,7 @@ namespace Encounter.Testing
 
         private void OnPitchReceived(float pitchHz)
         {
+            if (!enabled) return; // 無効化されている場合は処理をスキップ
             if (targetSprite == null || pitchMapper == null) return;
 
             // ピッチに応じて高さを変更
